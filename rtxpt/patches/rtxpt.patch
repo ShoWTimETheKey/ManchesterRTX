@@ -1,0 +1,1475 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index b723657..a429754 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -85,8 +85,9 @@ endfunction()
+ option(DONUT_WITH_STREAMLINE "Enable streamline, separate package required" ON)
+ set(STREAMLINE_DOWNLOAD_PATH "${CMAKE_SOURCE_DIR}/External/Streamline")
+ 
+-set(DONUT_STREAMLINE_FETCH_URL "https://github.com/NVIDIA-RTX/Streamline/releases/download/v2.9.0/streamline-sdk-v2.9.0.zip" CACHE STRING "URL to Streamline package to fetch from https://github.com/NVIDIA-RTX/Streamline/releases")
+-set(DONUT_STREAMLINE_FETCH_SHA256 "b7e4f31706cfacafba95d2d4abc2c9dcf2dc5fc58b2a6917c71f83051d271aa1" CACHE STRING "SHA256 hash of Streamline package from https://github.com/NVIDIA-RTX/Streamline/releases")
++# ManchesterRTX: Streamline 2.14.16 (DLSS 310.9.16; DLSS-RR preset F, DLSS-G UI recomposition)
++set(DONUT_STREAMLINE_FETCH_URL "https://github.com/NVIDIA-RTX/Streamline/releases/download/v2.14.16/streamline-sdk-v2.14.16.zip" CACHE STRING "URL to Streamline package to fetch from https://github.com/NVIDIA-RTX/Streamline/releases")
++set(DONUT_STREAMLINE_FETCH_SHA256 "32041e51db0cab709a271b72a352281b690c2abbd669a827809401a5dd23956b" CACHE STRING "SHA256 hash of Streamline package from https://github.com/NVIDIA-RTX/Streamline/releases")
+ set(DONUT_STREAMLINE_FETCH_DIR "${CMAKE_CURRENT_SOURCE_DIR}/External/Streamline" CACHE STRING "Directory to fetch Streamline to, empty uses build directory default")
+ 
+ option(STREAMLINE_FEATURE_DLSS_SR   "Include DLSS-SR dll"           ON  )
+diff --git a/Rtxpt/CMakeLists.txt b/Rtxpt/CMakeLists.txt
+index aeefb81..be708d5 100644
+--- a/Rtxpt/CMakeLists.txt
++++ b/Rtxpt/CMakeLists.txt
+@@ -126,6 +126,9 @@ add_custom_target(ShaderDynamicAssets ALL DEPENDS "${DYNSH_COPY1_MARKER}" "${DYN
+ 
+ # Create a static library for shared code (used by both samples)
+ add_library(RtxptCore STATIC ${shared_sources})
++# ManchesterRTX: the app-mode GUI sources carry Chinese UI text
++file(GLOB manchester_sources "Manchester/*.cpp")
++set_source_files_properties(${manchester_sources} PROPERTIES COMPILE_OPTIONS "/utf-8")
+ target_link_libraries(RtxptCore PUBLIC cxxopts donut_render donut_app donut_engine NRD Rtxdi omm-lib omm-gpu-nvrhi)
+ target_include_directories(RtxptCore PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}" "../External/Nrd/Include" ${CMAKE_SOURCE_DIR}/External/Rtxdi/Include)
+ target_compile_definitions(RtxptCore PUBLIC RTXPT_D3D12_WITH_NVAPI=$<BOOL:${NVRHI_WITH_NVAPI}>)
+@@ -170,3 +173,5 @@ endmacro()
+ # Build both sample executables
+ #add_rtxpt_sample(IntroSample "IntroSample.cpp") # Work in progress!
+ add_rtxpt_sample(Rtxpt "AdvancedSample.cpp")
++# ManchesterRTX: application icon (GLFW picks up GLFW_ICON for the window and taskbar)
++target_sources(Rtxpt PRIVATE Manchester/ManchesterRTX.rc)
+diff --git a/Rtxpt/Lighting/Distant/EnvMapBaker.h b/Rtxpt/Lighting/Distant/EnvMapBaker.h
+index 6c3ed38..cca32af 100644
+--- a/Rtxpt/Lighting/Distant/EnvMapBaker.h
++++ b/Rtxpt/Lighting/Distant/EnvMapBaker.h
+@@ -190,7 +190,7 @@ private:
+     EMB_DirectionalLight            m_bakedLights[c_MaxDirLights];
+     uint                            m_bakedLightCount = 0;
+ 
+-    int                             m_compressionQuality = 1;       // 0 - disabled; 1 - low quality; 2 - high quality
++    int                             m_compressionQuality = 0;       // 0 - disabled; 1 - low quality; 2 - high quality. ManchesterRTX: off - BC6H stepped the smooth sky gradients, and the sky is re-baked every frame anyway
+     bool                            m_outputIsCompressed = false;   // updated in Update() - it reflects current state of textures while 'm_compressionQuality' reflects required (future) state
+ 
+     std::shared_ptr<SampleProceduralSky>
+diff --git a/Rtxpt/Lighting/Distant/SampleProceduralSky.cpp b/Rtxpt/Lighting/Distant/SampleProceduralSky.cpp
+index 667dfb1..c7780e0 100644
+--- a/Rtxpt/Lighting/Distant/SampleProceduralSky.cpp
++++ b/Rtxpt/Lighting/Distant/SampleProceduralSky.cpp
+@@ -16,6 +16,8 @@
+ 
+ #include <nvrhi/utils.h>
+ 
++#include <algorithm>
++
+ #include <donut/app/imgui_renderer.h>
+ 
+ #include "../../SampleCommon/SampleCommon.h"
+@@ -65,21 +67,26 @@ inline float TimeIndependentLerpF(float deltaTime, float lerpRate)
+     return 1.0f - expf(-fabsf(deltaTime * lerpRate));
+ }
+ 
++ProceduralSkyOverride g_ProceduralSkyOverride;
++
+ bool SampleProceduralSky::Update( double sceneTime, ProceduralSkyConstants & outConstants, const std::string & presetType, bool forceInstantUpdate )
+ {
+     memset(&outConstants, 0, sizeof(outConstants));
+ 
+-    outConstants.FinalRadianceMultiplier = float3(m_brightness, m_brightness, m_brightness) * m_colorTint * m_sunBrightness;
++    const ProceduralSkyOverride & ov = g_ProceduralSkyOverride;
++    const float brightness = ov.Enabled ? ov.Brightness : m_brightness, sunBrightness = ov.Enabled ? ov.SunBrightness : m_sunBrightness;
++    const float3 tint = ov.Enabled ? ov.Tint : m_colorTint;
++    outConstants.FinalRadianceMultiplier = float3(brightness, brightness, brightness) * tint * sunBrightness;
+ 
+     const float cloudsLoopLength = 60 * 60 * 24;
+-    float cloudsTime = (float)fmod(sceneTime*m_cloudsMovementSpeed, cloudsLoopLength);
++    float cloudsTime = ov.Enabled ? (float)fmod(ov.CloudsTime, cloudsLoopLength) : (float)fmod(sceneTime*m_cloudsMovementSpeed, cloudsLoopLength);
+ 
+     outConstants.CloudsTime = cloudsTime;
+ 
+     outConstants.GroundAlbedo           = 0.3f, 0.15f, 0.14f;
+     outConstants.SunAngularDiameter     = m_sunAngularDiameterDeg / 180.0f * PI_f; // avg angular diameter of 0.5332 degrees
+ 
+-    outConstants.SkyParams.StarIrradiance                   = float3(1.47399998f, 1.85039997f, 1.91198003f) * m_sunBrightness;
++    outConstants.SkyParams.StarIrradiance                   = float3(1.47399998f, 1.85039997f, 1.91198003f) * sunBrightness;
+     outConstants.SkyParams.StarAngularDiameter               = outConstants.SunAngularDiameter;
+     outConstants.SkyParams.RayleightScatteringRGB           = float3(0.00580233941f, 0.0135577619f, 0.0331000052f);
+     outConstants.SkyParams.PlanetSurfaceRadius              = 6360.00000f;
+@@ -92,13 +99,28 @@ bool SampleProceduralSky::Update( double sceneTime, ProceduralSkyConstants & out
+ 
+     outConstants.sun_solid_angle    = 2 * PI_f * (float)(1.0 - cos(0.5 * outConstants.SunAngularDiameter)); // using double for precision
+ 
+-    outConstants.cloud_density_offset = m_cloudDensityOffset;
++    outConstants.cloud_density_offset = ov.Enabled ? ov.CloudDensityOffset : m_cloudDensityOffset;
+     outConstants.sky_transmittance  = m_cloudTransmittance;
+     outConstants.sky_phase_g        = 0.9f;
+     outConstants.sky_amb_phase_g    = 0.3f;
+     outConstants.sky_scattering     = m_cloudScattering;
+     outConstants.physical_sky_ground_radiance = (0.177055925f, 0.0584776886f, 0.00655480893f);
+ 
++    if (ov.Enabled)
++    {
++        // the sky's frame is z-up: world (x, y, z) -> sky (x, z, y)
++        const float3 d = normalize(ov.SunDirWorld);
++        outConstants.SunDir = float3(d.x, d.z, d.y);
++        outConstants.SkyParams.reserved = std::clamp(ov.SunAboveClouds, 0.0f, 1.0f);
++        outConstants._padding3 = ov.NightGlow;          // see ProceduralSky() in SampleProceduralSky.hlsli
++        outConstants._padding0 = ov.Stars;
++        outConstants._padding1 = ov.CloudUnderglow;
++        bool changes = memcmp(&outConstants, &m_lastConstants, sizeof(outConstants)) != 0;
++        m_lastConstants = outConstants;
++        m_lastSceneTime = sceneTime;
++        return changes;
++    }
++
+     // All this needs rework - stars need to rotate too :)
+ 
+     float timeOfTheDay = (float)fmod((sceneTime*m_timeOfDayMovementSpeed) / float(60 * 60 * 24) + m_sunTimeOfDayOffset + 1.0f, 2.0f) - 1.0f;
+diff --git a/Rtxpt/Lighting/Distant/SampleProceduralSky.h b/Rtxpt/Lighting/Distant/SampleProceduralSky.h
+index 1fe8cee..496c1c7 100644
+--- a/Rtxpt/Lighting/Distant/SampleProceduralSky.h
++++ b/Rtxpt/Lighting/Distant/SampleProceduralSky.h
+@@ -41,9 +41,31 @@ namespace donut::engine
+     struct LoadedTexture;
+ }
+ 
+-class SampleProceduralSky 
++// ManchesterRTX: the app aims the sun and drives the clouds directly instead of the time-of-day presets.
++// SunDirWorld points towards the sun in world space (y up). SunAboveClouds (0..1) is how much of the sun disc is drawn in
++// front of the clouds in the sky map: 1 for broken cloud (the app draws their moving shadows on the city itself, so the
++// whole city does not dim at once), 0 under an overcast deck that swallows the sun. At night the sky gets the city's
++// light pollution near the horizon, the same glow on the underside of the clouds, and stars where the sky is dark.
++struct ProceduralSkyOverride
++{
++    bool    Enabled             = false;
++    float3  SunDirWorld         = float3(0, 1, 0);
++    float   CloudDensityOffset  = 0.3f;     // 0 overcast .. 1 clear
++    double  CloudsTime          = 0.0;
++    float   Brightness          = 1.0f;
++    float   SunBrightness       = 5.0f;
++    float3  Tint                = float3(1.45f, 1.29f, 1.27f);
++    float   SunAboveClouds      = 1.0f;
++    float   NightGlow           = 0.0f;     // light pollution radiance near the horizon (sky units, before the multiplier)
++    float   CloudUnderglow      = 0.0f;     // the same light reflected by the clouds' undersides
++    float   Stars               = 0.0f;     // star field brightness
++};
++extern ProceduralSkyOverride g_ProceduralSkyOverride;
++
++class SampleProceduralSky
+ {
+ public:
++    const ProceduralSkyConstants &  GetLastConstants() const    { return m_lastConstants; }
+     SampleProceduralSky( nvrhi::IDevice* device, std::shared_ptr<donut::engine::TextureCache> textureCache, std::shared_ptr<donut::engine::CommonRenderPasses> commonPasses, nvrhi::ICommandList* commandList );
+     ~SampleProceduralSky();
+ 
+@@ -78,7 +100,7 @@ private:
+     float                           m_sunEastWestRotation       = 0.0f;
+     float                           m_sunAngularDiameterDeg     = 0.5332f;
+ 
+-    float                           m_cloudDensityOffset        = 0.75f;
++    float                           m_cloudDensityOffset        = 0.32f;    // ManchesterRTX: scattered cloud so the sun casts crisp shadows (was 0.75)
+     float                           m_cloudTransmittance        = 2.5f;
+     float                           m_cloudScattering           = 2.0f;
+ 
+diff --git a/Rtxpt/Lighting/Distant/SampleProceduralSky.hlsli b/Rtxpt/Lighting/Distant/SampleProceduralSky.hlsli
+index 8b9d40b..74e955e 100644
+--- a/Rtxpt/Lighting/Distant/SampleProceduralSky.hlsli
++++ b/Rtxpt/Lighting/Distant/SampleProceduralSky.hlsli
+@@ -271,6 +271,37 @@ float4 ProceduralSkyLowRes( uint cubeDim, uint3 cubePosFace, const float3 viewDi
+     return float4(0,0,0,0);
+ }
+ 
++// ManchesterRTX night sky (sky frame, z up): the city's light pollution - sodium and LED light scattered by the haze,
++// warm and bright at the horizon, fading upwards into a deep blue-black - and a star field from a hashed grid on the
++// sphere (one candidate per cell, few of them lit, the brightest rare), drowned by the glow near the horizon
++float3 NightSky(float3 dir, float glow, float stars)
++{
++    const float h = dir.z;
++    float3 c = 0;
++    if (glow > 0)
++    {
++        const float up = saturate(h);
++        c += glow * (float3(1.0, 0.60, 0.36) * exp(-up * 9.0) + float3(0.05, 0.07, 0.15) * exp(-up * 1.2));
++        if (h < 0) c += glow * float3(1.0, 0.60, 0.36) * 0.5;
++    }
++    if (stars > 0 && h > 0.03)
++    {
++        const float el = asin(saturate(h)), az = atan2(dir.y, dir.x);
++        const float cell = 0.0045;      // radians
++        const float2 g = float2(az * cos(el), el) / cell, gi = floor(g);
++        const uint hsh = Hash32Combine(Hash32(asuint(gi.x) + 7919u), asuint(gi.y));
++        if (Hash32ToFloat(hsh) > 0.982)
++        {
++            const float2 jitter = float2(Hash32ToFloat(Hash32(hsh + 1u)), Hash32ToFloat(Hash32(hsh + 2u))) * 0.6 + 0.2;
++            const float dist = length(g - gi - jitter) * cell, size = 0.0014;
++            const float mag = 0.15 + 3.0 * pow(Hash32ToFloat(Hash32(hsh + 3u)), 8.0);
++            const float3 tint = lerp(float3(0.78, 0.86, 1.0), float3(1.0, 0.88, 0.72), Hash32ToFloat(Hash32(hsh + 4u)));
++            c += stars * mag * tint * exp(-dist * dist / (size * size)) * smoothstep(0.03, 0.35, h);
++        }
++    }
++    return c;
++}
++
+ float3 ProceduralSky( uint cubeDim, uint3 cubePosFace, const float3 viewDirection, ProceduralSkyWorkingContext workingContext, TextureCube<float4> lowResPrePassCube, float3 cubeDir, float3 cubeDirRight, float3 cubeDirBottom )
+ {
+     uint randHash = Hash32Combine( Hash32Combine(Hash32(cubePosFace.x), cubePosFace.y), cubePosFace.z );
+@@ -290,9 +321,13 @@ float3 ProceduralSky( uint cubeDim, uint3 cubePosFace, const float3 viewDirectio
+     float angl = acos(saturate(dot(eyeVec, workingContext.Consts.SunDir)));
+     angl /= workingContext.Consts.SunAngularDiameter*0.5;
+     sun_direct_radiance *= pow( saturate((1-angl)*5.0 + 0.875), 10 );
+-        
+-    radiance += sun_direct_radiance;
+-        
++
++    // ManchesterRTX: SkyParams.reserved (0..1) is the part of the sun disc kept in front of the clouds (their shadows are
++    // drawn on the city instead); the rest sits behind them and is swallowed by a thick deck. The night sky lies behind too
++    const float sunAboveClouds = saturate(skyParams.reserved);
++    radiance += sun_direct_radiance * (1.0 - sunAboveClouds);
++    radiance += NightSky(eyeVec, workingContext.Consts._padding3, workingContext.Consts._padding0);
++
+     float CloudsVisible = saturate( (dot(normalize(camera), eyeVec) + 0.02) * 5.0 );
+     [branch] if (CloudsVisible > 0 && drawClouds()) 
+     {
+@@ -328,10 +363,13 @@ float3 ProceduralSky( uint cubeDim, uint3 cubePosFace, const float3 viewDirectio
+         float3 ground_transmittance = float3(0,0,0);
+         float3 radiance_to_point = GetSkyRadianceToPoint(skyParams, workingContext.TransmittanceTexture, workingContext.SamplerLinearWrap, workingContext.ScatterTexture, workingContext.SamplerLinearWrap, camera, spoint, workingContext.Consts.SunDir, ground_transmittance);
+         color.xyz = color.xyz * ground_transmittance + radiance_to_point * 0.9;
++        // ManchesterRTX: at night the clouds' undersides catch the city's light
++        color.xyz += workingContext.Consts._padding1 * float3(1.0, 0.62, 0.40) * (1.0 - color.w) * (0.4 + 0.6 * exp(-saturate(eyeVec.z) * 3.0));
+ 
+         radiance = lerp(color.xyz, radiance, color.w);
+     }
+-    
++    radiance += sun_direct_radiance * sunAboveClouds;
++
+     radiance *= workingContext.Consts.FinalRadianceMultiplier;
+ 
+     return radiance;
+diff --git a/Rtxpt/Misc/ZoomTool.cpp b/Rtxpt/Misc/ZoomTool.cpp
+index 0a487ba..37c9e98 100644
+--- a/Rtxpt/Misc/ZoomTool.cpp
++++ b/Rtxpt/Misc/ZoomTool.cpp
+@@ -94,7 +94,7 @@ void ZoomTool::Render( nvrhi::ICommandList * commandList, nvrhi::TextureHandle c
+         commandList->writeBuffer(m_constantBuffer, &consts, sizeof(consts));
+         nvrhi::BindingSetDesc bindingSetDesc; bindingSetDesc.bindings = {
+             nvrhi::BindingSetItem::ConstantBuffer(0, m_constantBuffer),
+-            nvrhi::BindingSetItem::Texture_UAV(0, colorInOut, nvrhi::Format::RGBA8_UNORM) };
++            nvrhi::BindingSetItem::Texture_UAV(0, colorInOut, colorInOut->getDesc().format == nvrhi::Format::R10G10B10A2_UNORM ? nvrhi::Format::R10G10B10A2_UNORM : nvrhi::Format::RGBA8_UNORM) };   // ManchesterRTX: HDR10 frames
+ 
+         nvrhi::BindingSetHandle bindingSet = m_bindingCache.GetOrCreateBindingSet(bindingSetDesc, m_bindingLayout);
+ 
+diff --git a/Rtxpt/Sample.cpp b/Rtxpt/Sample.cpp
+index 029a078..3fcb70c 100644
+--- a/Rtxpt/Sample.cpp
++++ b/Rtxpt/Sample.cpp
+@@ -9,6 +9,7 @@
+ */
+ 
+ #include "Sample.h"
++#include "Manchester/ManchesterApp.h"
+ 
+ #include <donut/engine/FramebufferFactory.h>
+ #include <donut/engine/ShaderFactory.h>
+@@ -118,6 +119,9 @@ Sample::Sample(donut::app::DeviceManager& deviceManager,
+     }
+ 
+     m_captureScriptManager = std::make_unique<CaptureScriptManager>(*this, m_ui, m_cmdLine);
++
++    if (m_cmdLine.App)
++        m_manchester = std::make_unique<ManchesterApp>(*this, m_ui);
+ }
+ 
+ Sample::~Sample()
+@@ -552,6 +556,11 @@ void Sample::SceneLoaded( )
+     std::shared_ptr<EnvironmentLight> envLight = FindEnvironmentLight(m_lights);
+     m_envMapLocalPath = (envLight==nullptr)?(""):(envLight->path);
+     m_ui.EnvironmentMapParams = EnvironmentMapRuntimeParameters();
++    if (envLight != nullptr)    // ManchesterRTX: honour the scene file's environment tint and yaw rotation (degrees)
++    {
++        m_ui.EnvironmentMapParams.TintColor = envLight->radianceScale;
++        m_ui.EnvironmentMapParams.RotationXYZ = dm::float3(0.f, envLight->rotation, 0.f);
++    }
+     m_envMapOverride = c_EnvMapSceneDefault;
+ 
+     if (m_ui.TogglableNodes == nullptr)
+@@ -667,13 +676,38 @@ void Sample::SceneLoaded( )
+     if (m_cmdLine.cameraPosDirUp != "")
+         SetCurrentCameraPosDirUp(m_cmdLine.cameraPosDirUp);
+ 
++    // ManchesterRTX: DLSS Super Resolution mode and (multi) frame generation chosen on the command line
++    if (m_cmdLine.DLSSModeName != "")
++    {
++        const std::string& n = m_cmdLine.DLSSModeName;
++        SI::DLSSMode mode = SampleUIData::DLSSModeDefault;
++        if (n == "dlaa")                    mode = SI::DLSSMode::eDLAA;
++        else if (n == "quality")            mode = SI::DLSSMode::eMaxQuality;
++        else if (n == "balanced")           mode = SI::DLSSMode::eBalanced;
++        else if (n == "performance")        mode = SI::DLSSMode::eMaxPerformance;
++        else if (n == "ultraperformance")   mode = SI::DLSSMode::eUltraPerformance;
++        else log::warning("Unknown --dlssMode '%s', using balanced", n.c_str());
++        m_ui.DLSSModeStartup = m_ui.DLSSMode = mode;
++    }
++    if (m_cmdLine.DLSSFrameGen > 0)
++    {
++        m_ui.DLSSFGMode = SI::DLSSGMode::eOn;
++        m_ui.DLSSFGNumFramesToGenerate = (uint32_t)std::min(m_cmdLine.DLSSFrameGen, 3);
++    }
++
+     m_ui.MaterialVariantIndex = 0;
+ 
++    if (m_manchester)
++        m_manchester->SceneLoaded();
++
+     m_asyncLoadingInProgress = true;
+ }
+ 
+ bool Sample::KeyboardUpdate(int key, int scancode, int action, int mods)
+ {
++    if (m_manchester && m_manchester->KeyboardUpdate(key, scancode, action, mods))
++        return true;
++
+     if (m_zoomTool && m_zoomTool->KeyboardUpdate(key, scancode, action, mods))
+         return true;
+ 
+@@ -708,6 +742,9 @@ bool Sample::KeyboardUpdate(int key, int scancode, int action, int mods)
+ 
+ bool Sample::MousePosUpdate(double xpos, double ypos)
+ {
++    if (m_manchester)
++        m_manchester->MousePosUpdate(xpos, ypos);
++
+     if (!(m_sampleGame && m_sampleGame->CameraActive()))
+         m_camera.MousePosUpdate(xpos, ypos);
+     if (m_sampleGame)   m_sampleGame->MousePosUpdate(xpos /** upscalingScale.x*/, ypos /** upscalingScale.y*/);
+@@ -726,7 +763,10 @@ bool Sample::MousePosUpdate(double xpos, double ypos)
+ 
+ bool Sample::MouseButtonUpdate(int button, int action, int mods)
+ {
+-    if (m_zoomTool)     
++    if (m_manchester && m_manchester->MouseButtonUpdate(button, action, mods))
++        return true;
++
++    if (m_zoomTool)
+         if (m_zoomTool->MouseButtonUpdate(button, action, mods))
+             return true;
+ 
+@@ -752,6 +792,9 @@ bool Sample::MouseButtonUpdate(int button, int action, int mods)
+ 
+ bool Sample::MouseScrollUpdate(double xoffset, double yoffset)
+ {
++    if (m_manchester && m_manchester->MouseScrollUpdate(xoffset, yoffset))
++        return true;
++
+     if (!(m_sampleGame && m_sampleGame->CameraActive()))
+     {
+         //m_camera.MouseScrollUpdate(xoffset, yoffset);
+@@ -764,6 +807,9 @@ void Sample::Animate(float fElapsedTimeSeconds)
+ {
+     if (m_ui.ActualFPSLimiter()>0)    // essential for stable video recording
+         fElapsedTimeSeconds = 1.0f / (float)m_ui.ActualFPSLimiter();
++    // ManchesterRTX: motion runs on a smoothed frame time (see ManchesterApp::SmoothFrameTime)
++    if (m_manchester)
++        fElapsedTimeSeconds = m_manchester->SmoothFrameTime(fElapsedTimeSeconds);
+ 
+     m_captureScriptManager->PreAnim(fElapsedTimeSeconds);
+ 
+@@ -820,6 +866,9 @@ void Sample::Animate(float fElapsedTimeSeconds)
+ 
+     m_camera.Animate(fElapsedTimeSeconds);
+ 
++    if (m_manchester)
++        m_manchester->Animate(fElapsedTimeSeconds);
++
+     if (m_sampleGame) m_sampleGame->TickCamera(fElapsedTimeSeconds, m_camera);
+ 
+     if (m_ui.CameraAntiRRSleepJitter>0)
+@@ -873,7 +922,13 @@ void Sample::Animate(float fElapsedTimeSeconds)
+         + ")";
+ 
+ 
+-    GetDeviceManager()->SetInformativeWindowTitle(g_windowTitle, false, extraInfo.c_str());
++    if (!m_manchester)  // app mode keeps the plain "Manchester RTX" title the window was created with
++        GetDeviceManager()->SetInformativeWindowTitle(g_windowTitle, false, extraInfo.c_str());
++}
++
++nvrhi::ITexture* Sample::GetHudlessColor() const
++{
++    return (m_renderTargets != nullptr) ? m_renderTargets->PreUIColor.Get() : nullptr;
+ }
+ 
+ std::string Sample::GetResolutionInfo() const
+@@ -1579,6 +1634,8 @@ void Sample::RtxdiSetupFrame(nvrhi::IFramebuffer* framebuffer, PathTracerCameraD
+ 
+ bool Sample::ShouldRenderUnfocused()
+ {
++    if (m_cmdLine.RenderUnfocused)  // ManchesterRTX
++        return true;
+     if (m_frameIndex < 16 || m_ui.ResetAccumulation || m_ui.ResetRealtimeCaches || m_captureScriptManager->IsDoingWork() )
+     {
+         // Make sure we at least run one render frame to allow expensive resource creation to happen in background, and to allow at least somewhat decent convergence so when user alt-tabs they get a nice image
+@@ -1653,7 +1710,10 @@ void Sample::StreamlinePreRender()
+         // This is where DLSS-G is toggled On and Off (using dlssgOptions.mode) and where we set DLSS-G parameters.
+         auto dlssgOptions = StreamlineInterface::DLSSGOptions{};
+         dlssgOptions.mode = m_ui.ActualDLSSFGMode();
+-        dlssgOptions.numFramesToGenerate = m_ui.DLSSFGNumFramesToGenerate;
++        dlssgOptions.numFramesToGenerate = std::min(m_ui.DLSSFGNumFramesToGenerate, std::max(1u, m_ui.DLSSFGMaxNumFramesToGenerate));   // ManchesterRTX: GPUs without MFG fall back to 2x
++        // ManchesterRTX: app mode renders its GUI into a separate UI layer and tags it with the hudless frame, so the UI
++        // can be interpolated separately from the scene (DLSS-G UI recomposition, NVIDIA's frame generation preset B)
++        dlssgOptions.enableUserInterfaceRecomposition = (m_manchester != nullptr);
+ 
+         // This is where we query DLSS-G minimum swapchain size
+         if (GetDeviceManager()->GetStreamline().IsDLSSGAvailable())
+@@ -1665,6 +1725,14 @@ void Sample::StreamlinePreRender()
+ 
+             GetDeviceManager()->GetStreamline().SetDLSSGOptions(dlssgOptions);
+             m_ui.DLSSFGOptions = dlssgOptions;
++
++            static int lastLoggedMultiplier = -1;   // ManchesterRTX: report frame generation state changes
++            if ((int)m_ui.DLSSFGMultiplier != lastLoggedMultiplier)
++            {
++                lastLoggedMultiplier = (int)m_ui.DLSSFGMultiplier;
++                log::info("DLSS-G: mode %s, generating %u (max %u), frames presented per rendered frame %u, UI recomposition %s", dlssgOptions.mode == StreamlineInterface::DLSSGMode::eOn ? "on" : "off",
++                    dlssgOptions.numFramesToGenerate, m_ui.DLSSFGMaxNumFramesToGenerate, m_ui.DLSSFGMultiplier, dlssgOptions.enableUserInterfaceRecomposition ? "on" : "off");
++            }
+         }
+     }
+ 
+@@ -1686,8 +1754,8 @@ void Sample::StreamlinePreRender()
+         // Reset DLSS vars if we stop using it
+         if (changeToDLSSMode || m_ui.DLSSMode == StreamlineInterface::DLSSMode::eOff)
+         {
+-            m_ui.DLSSLastMode = SampleUIData::DLSSModeDefault;
+-            m_ui.DLSSMode = SampleUIData::DLSSModeDefault;
++            m_ui.DLSSLastMode = m_ui.DLSSModeStartup;
++            m_ui.DLSSMode = m_ui.DLSSModeStartup;
+             m_ui.DLSSLastDisplaySize = { 0,0 };
+         }
+ 
+@@ -1733,13 +1801,16 @@ void Sample::StreamlinePreRender()
+                     if (m_recommendedDLSSSettings.optimalRenderSize.x <= 0 || m_recommendedDLSSSettings.optimalRenderSize.y <= 0)
+                     {
+                         m_ui.RealtimeAA = 0;
+-                        m_ui.DLSSMode = SampleUIData::DLSSModeDefault;
++                        m_ui.DLSSMode = m_ui.DLSSModeStartup;
+                         m_renderSize = m_displaySize;
+                     }
+                     else
+                     {
+                         m_ui.DLSSLastMode = m_ui.DLSSMode;
+                         m_ui.DLSSLastDisplaySize = m_displaySize;
++                        log::info("DLSS%s: mode %d, preset %d, render %dx%d -> display %ux%u", m_ui.RealtimeAA == 3 ? "-RR" : "-SR", (int)m_ui.DLSSMode,
++                            m_ui.RealtimeAA == 3 ? (int)m_ui.DLSRRPreset : 0,
++                            m_recommendedDLSSSettings.optimalRenderSize.x, m_recommendedDLSSSettings.optimalRenderSize.y, m_displaySize.x, m_displaySize.y);   // ManchesterRTX
+                     }
+                 }
+ 
+@@ -1831,6 +1902,10 @@ void Sample::PostProcessPreToneMapping(nvrhi::ICommandList* commandList, const d
+     fullscreenView.SetViewport(windowViewport);
+     fullscreenView.UpdateCache();
+ 
++    // ManchesterRTX: ray-traced sun shafts, haze and cloud shadows on the denoised HDR frame
++    if (m_manchester)
++        m_manchester->RenderAtmosphere(m_commandList);
++
+     if (m_ui.EnableBloom && m_ui.BloomIntensity > 0.f && m_ui.BloomRadius > 0.f)
+     {
+         m_bloomPass->Render(m_commandList, m_renderTargets->ProcessedOutputFramebuffer, fullscreenView, m_renderTargets->ProcessedOutputColor, m_ui.BloomRadius, m_ui.BloomIntensity);
+@@ -2199,6 +2274,50 @@ void Sample::Render(nvrhi::IFramebuffer* framebuffer)
+         // first run tonemapper can close & re-open command list - when that happens, we have to re-upload volatile constants
+         m_commandList->writeBuffer(m_constantBuffer, &constants, sizeof(constants));
+     }
++    // ManchesterRTX: the display runs HDR10, screenshots are saved in SDR - the same frame tone mapped again for sRGB
++    if (g_HdrOutput && m_manchester && m_manchester->ScreenshotPending())
++    {
++        if (!m_sdrScreenshot || m_sdrScreenshot->getDesc().width != m_displaySize.x || m_sdrScreenshot->getDesc().height != m_displaySize.y)
++        {
++            nvrhi::TextureDesc d;
++            d.width = m_displaySize.x; d.height = m_displaySize.y;
++            d.format = nvrhi::Format::SRGBA8_UNORM;
++            d.isRenderTarget = true;
++            d.initialState = nvrhi::ResourceStates::RenderTarget;
++            d.keepInitialState = true;
++            d.debugName = "SdrScreenshot";
++            m_sdrScreenshot = GetDevice()->createTexture(d);
++            m_sdrScreenshotFB = GetDevice()->createFramebuffer(nvrhi::FramebufferDesc().addColorAttachment(m_sdrScreenshot));
++        }
++        m_toneMappingPass->RenderSDR(m_commandList, fullscreenView, m_renderTargets->ProcessedOutputColor, m_sdrScreenshotFB);
++    }
++    // ManchesterRTX developer recording (F9): this frame, tone mapped for SDR, copied out to system memory
++    if (const int slot = m_manchester ? m_manchester->RecordSlot() : -1; slot >= 0)
++    {
++        if (!m_recordTarget || m_recordTarget->getDesc().width != m_displaySize.x || m_recordTarget->getDesc().height != m_displaySize.y)
++        {
++            nvrhi::TextureDesc d;
++            d.width = m_displaySize.x; d.height = m_displaySize.y;
++            d.format = nvrhi::Format::SRGBA8_UNORM;
++            d.isRenderTarget = true;
++            d.initialState = nvrhi::ResourceStates::RenderTarget;
++            d.keepInitialState = true;
++            d.debugName = "RecordFrame";
++            m_recordTarget = GetDevice()->createTexture(d);
++            m_recordFB = GetDevice()->createFramebuffer(nvrhi::FramebufferDesc().addColorAttachment(m_recordTarget));
++            m_recordStaging.clear();
++        }
++        if ((int)m_recordStaging.size() <= slot) m_recordStaging.resize(slot + 1);
++        if (!m_recordStaging[slot])
++        {
++            nvrhi::TextureDesc d = m_recordTarget->getDesc();
++            d.isRenderTarget = false;
++            d.debugName = "RecordStaging";
++            m_recordStaging[slot] = GetDevice()->createStagingTexture(d, nvrhi::CpuAccessMode::Read);
++        }
++        m_toneMappingPass->RenderSDR(m_commandList, fullscreenView, m_renderTargets->ProcessedOutputColor, m_recordFB);
++        m_commandList->copyTexture(m_recordStaging[slot], nvrhi::TextureSlice(), m_recordTarget, nvrhi::TextureSlice());
++    }
+ 
+     PostProcessPostToneMapping(m_commandList, fullscreenView);  // writing to m_renderTargets->LdrColor
+ 
+@@ -2211,6 +2330,8 @@ void Sample::Render(nvrhi::IFramebuffer* framebuffer)
+ 
+     m_commandList->beginMarker("Blit");
+     m_CommonPasses->BlitTexture(m_commandList, framebuffer, m_renderTargets->LdrColor, m_bindingCache.get());
++    // ManchesterRTX: the hudless frame DLSS-G is tagged with (and the liquid glass pass refracts) - the scene before any UI
++    m_commandList->copyTexture(m_renderTargets->PreUIColor, nvrhi::TextureSlice(), m_renderTargets->LdrColor, nvrhi::TextureSlice());
+     m_commandList->endMarker();
+ 
+     if (m_ui.ShowDebugLines == true)
+@@ -2297,6 +2418,52 @@ void Sample::Render(nvrhi::IFramebuffer* framebuffer)
+ 
+     m_captureScriptManager->PostRender(DumpScreenshot);
+ 
++    if (m_manchester)   // app mode screenshots: the finished frame, before the GUI is drawn over it (in HDR10: its SDR version)
++    {
++        std::string screenshotPath;
++        if (m_manchester->TakeScreenshotRequest(screenshotPath))
++        {
++            const bool ok = (g_HdrOutput && m_sdrScreenshot)
++                ? SaveTextureToFile(GetDevice(), m_CommonPasses.get(), m_sdrScreenshot, nvrhi::ResourceStates::RenderTarget, screenshotPath.c_str())
++                : DumpScreenshot(screenshotPath.c_str());
++            m_manchester->ScreenshotDone(screenshotPath, ok);
++        }
++        if (m_manchester->TakeRawScreenshotRequest(screenshotPath))
++            DumpScreenshot(screenshotPath.c_str());     // HDR10: the PQ code values, stored sRGB-encoded (tools\pq-view.ps1 -Raw)
++        std::string folder, log;
++        if (m_manchester->TakeRecording(folder, log))
++        {
++            GetDevice()->waitForIdle();
++            for (size_t i = 0; i < m_recordStaging.size(); i++)
++            {
++                if (!m_recordStaging[i]) continue;
++                size_t pitch = 0;
++                const uint8_t* src = (const uint8_t*)GetDevice()->mapStagingTexture(m_recordStaging[i], nvrhi::TextureSlice(), nvrhi::CpuAccessMode::Read, &pitch);
++                if (!src) continue;
++                // 24-bit BMP, rows bottom-up, from RGBA8
++                const uint32_t w = m_recordTarget->getDesc().width, h = m_recordTarget->getDesc().height, row = (w * 3 + 3) & ~3u;
++                std::vector<uint8_t> file(54 + size_t(row) * h, 0);
++                auto put32 = [&](size_t o, uint32_t v) { memcpy(&file[o], &v, 4); };
++                file[0] = 'B'; file[1] = 'M'; put32(2, uint32_t(file.size())); put32(10, 54); put32(14, 40); put32(18, w); put32(22, h);
++                file[26] = 1; file[28] = 24; put32(34, row * h);
++                for (uint32_t y = 0; y < h; y++)
++                {
++                    const uint8_t* s = src + size_t(y) * pitch;
++                    uint8_t* d = &file[54 + size_t(h - 1 - y) * row];
++                    for (uint32_t x = 0; x < w; x++) { d[x * 3] = s[x * 4 + 2]; d[x * 3 + 1] = s[x * 4 + 1]; d[x * 3 + 2] = s[x * 4]; }
++                }
++                GetDevice()->unmapStagingTexture(m_recordStaging[i]);
++                char name[32];
++                snprintf(name, sizeof(name), "\\rec-%02d.bmp", int(i));
++                if (FILE* f = fopen((folder + name).c_str(), "wb")) { fwrite(file.data(), 1, file.size(), f); fclose(f); }
++            }
++            if (FILE* f = fopen((folder + "\\rec.csv").c_str(), "w")) { fputs(log.c_str(), f); fclose(f); }
++            m_recordStaging.clear();
++            m_recordTarget = nullptr;
++            m_recordFB = nullptr;
++        }
++    }
++
+     if (m_ui.ExperimentalPhotoModeScreenshot)
+     {
+         DenoisedScreenshot( framebufferTexture );
+@@ -2327,7 +2494,7 @@ void Sample::RecreateBindingSet()
+         nvrhi::BindingSetItem::StructuredBuffer_SRV(3, m_scene->GetGeometryBuffer()),
+         nvrhi::BindingSetItem::StructuredBuffer_SRV(4, (m_ommBaker)?(m_ommBaker->GetGeometryDebugBuffer()):(m_materialsBaker->GetMaterialDataBuffer().Get()) ),   // YUCK
+         nvrhi::BindingSetItem::StructuredBuffer_SRV(5, m_materialsBaker->GetMaterialDataBuffer()),
+-        nvrhi::BindingSetItem::Texture_SRV(6,  m_renderTargets->LdrColorScratch, nvrhi::Format::SRGBA8_UNORM),
++        nvrhi::BindingSetItem::Texture_SRV(6,  m_renderTargets->LdrColorScratch, g_HdrOutput ? nvrhi::Format::R10G10B10A2_UNORM : nvrhi::Format::SRGBA8_UNORM),   // ManchesterRTX: HDR10
+         nvrhi::BindingSetItem::Texture_SRV(10, m_envMapBaker->GetEnvMapCube()), //m_EnvironmentMap->IsEnvMapLoaded() ? m_EnvironmentMap->GetEnvironmentMap() : m_CommonPasses->m_BlackTexture),
+         nvrhi::BindingSetItem::Texture_SRV(11, m_envMapBaker->GetImportanceSampling()->GetImportanceMapOnly()), //m_EnvironmentMap->IsImportanceMapLoaded() ? m_EnvironmentMap->GetImportanceMap() : m_CommonPasses->m_BlackTexture),
+         nvrhi::BindingSetItem::StructuredBuffer_SRV(12, m_lightsBaker->GetControlBuffer()),
+@@ -2345,7 +2512,7 @@ void Sample::RecreateBindingSet()
+         nvrhi::BindingSetItem::Sampler(2, m_envMapBaker->GetImportanceSampling()->GetImportanceMapSampler()),
+         nvrhi::BindingSetItem::Texture_UAV(0, m_renderTargets->OutputColor),
+         nvrhi::BindingSetItem::Texture_UAV(1, m_renderTargets->ProcessedOutputColor),
+-        nvrhi::BindingSetItem::Texture_UAV(2, m_renderTargets->LdrColor, nvrhi::Format::RGBA8_UNORM),
++        nvrhi::BindingSetItem::Texture_UAV(2, m_renderTargets->LdrColor, g_HdrOutput ? nvrhi::Format::R10G10B10A2_UNORM : nvrhi::Format::RGBA8_UNORM),
+         nvrhi::BindingSetItem::Texture_UAV(4, m_renderTargets->Throughput),
+         nvrhi::BindingSetItem::Texture_UAV(5, m_renderTargets->ScreenMotionVectors),
+         nvrhi::BindingSetItem::Texture_UAV(6, m_renderTargets->Depth),
+diff --git a/Rtxpt/Sample.h b/Rtxpt/Sample.h
+index 022b3d6..d9df676 100644
+--- a/Rtxpt/Sample.h
++++ b/Rtxpt/Sample.h
+@@ -44,12 +44,14 @@
+ 
+ class DenoisingGuidesBaker;
+ class CaptureScriptManager;
++class ManchesterApp;
+ class ComputePipelineBaker;
+ class ComputeShaderVariant;
+ 
+ class Sample : public donut::app::ApplicationBase
+ {
+     // static constexpr uint32_t c_PathTracerVariants   = 6; // see shaders.cfg and CreatePTPipeline for details on variants
++    friend class ManchesterApp;     // ManchesterRTX app mode GUI drives the camera, lights and sky directly
+ 
+ public:
+     using ApplicationBase::ApplicationBase;
+@@ -176,6 +178,9 @@ public:
+ 
+     bool                                    AccumulationCompleted() const       { return m_accumulationCompleted; }
+ 
++    ManchesterApp *                         GetManchester() const               { return m_manchester.get(); }  // non-null in --app mode
++    nvrhi::ITexture *                       GetHudlessColor() const;            // the finished frame before UI (display size)
++
+ protected:
+     // Called when render targets have been recreated (e.g. after window resize)
+     virtual void OnRenderTargetsRecreated() { }
+@@ -317,6 +322,13 @@ private:
+     // The command line settings are here
+     const CommandLineOptions&                   m_cmdLine;
+ 
++    std::unique_ptr<ManchesterApp>              m_manchester;
++    nvrhi::TextureHandle                        m_sdrScreenshot;    // ManchesterRTX: SDR copy of an HDR10 frame for screenshots
++    nvrhi::FramebufferHandle                    m_sdrScreenshotFB;
++    nvrhi::TextureHandle                        m_recordTarget;     // ManchesterRTX developer recording (F9): the SDR frame,
++    nvrhi::FramebufferHandle                    m_recordFB;
++    std::vector<nvrhi::StagingTextureHandle>    m_recordStaging;    // copied to system memory (no video memory pressure)
++
+     // path tracing
+     int                                         m_accumulationSampleIndex = 0;  // accumulated so far in the past, so if 0 this is the first.
+ 
+diff --git a/Rtxpt/SampleCommon/CommandLine.cpp b/Rtxpt/SampleCommon/CommandLine.cpp
+index 345c719..c33465c 100644
+--- a/Rtxpt/SampleCommon/CommandLine.cpp
++++ b/Rtxpt/SampleCommon/CommandLine.cpp
+@@ -62,6 +62,10 @@ bool CommandLineOptions::InitFromCommandLine(int _argc, char const* const* _argv
+             ("disableFireflyFilters", "Override realtime and reference mode firefly filters to off", value(DisableFireflyFilters))
+             ("disablePostProcessFilters", "Disable post-process filters like bloom", value(DisablePostProcessFilters))
+             ("cameraPosDirUp", "Specify camera location to set after loading the scene; format is 9 comma separated values; can be obtained via UI Camera->Copy TO clipboard", value(cameraPosDirUp))
++            ("dlssFG", "DLSS Frame Generation: 0 - off; 1 - 2x; 2 - 3x; 3 - 4x (multi frame generation needs an RTX 50 GPU)", value(DLSSFrameGen))
++            ("dlssMode", "DLSS Super Resolution mode: dlaa, quality, balanced, performance, ultraperformance", value(DLSSModeName))
++            ("renderUnfocused", "Keep rendering while the window is not focused", value(RenderUnfocused))
++            ("app", "ManchesterRTX app mode: presentation GUI over the Manchester scene, window and render settings from ManchesterRTX.ini", value(App))
+             ("propShowTags", "To show special props only if tag found in list (comma separated values)", value(PropShowTags))
+             ("propCameraAttach", "After load, try to attach camera to the named prop", value(PropCameraAttach))            
+             ;
+diff --git a/Rtxpt/SampleCommon/CommandLine.h b/Rtxpt/SampleCommon/CommandLine.h
+index 6b9c244..25bd903 100644
+--- a/Rtxpt/SampleCommon/CommandLine.h
++++ b/Rtxpt/SampleCommon/CommandLine.h
+@@ -56,6 +56,11 @@ struct CommandLineOptions
+     bool DisableFireflyFilters      = false;
+     bool DisablePostProcessFilters  = false;
+ 
++    int  DLSSFrameGen               = 0;    // ManchesterRTX: 0 off, 1..3 frames to generate (2x..4x)
++    std::string DLSSModeName        = "";   // ManchesterRTX: dlaa, quality, balanced, performance, ultraperformance
++    bool RenderUnfocused            = false; // ManchesterRTX: keep rendering when the window loses focus
++    bool App                        = false; // ManchesterRTX: app mode - presentation GUI, borderless window, settings from ManchesterRTX.ini
++
+     std::string PropShowTags        = "";
+     std::string PropCameraAttach    = "";
+ 
+diff --git a/Rtxpt/SampleCommon/RenderTargets.cpp b/Rtxpt/SampleCommon/RenderTargets.cpp
+index ebbecae..7e9fcff 100644
+--- a/Rtxpt/SampleCommon/RenderTargets.cpp
++++ b/Rtxpt/SampleCommon/RenderTargets.cpp
+@@ -13,6 +13,7 @@
+ #include "../Shaders/PathTracer/Config.h"
+ 
+ #include "RenderTargets.h"
++#include "SampleCommon.h"
+ 
+ #include <donut/engine/FramebufferFactory.h>
+ 
+@@ -238,9 +239,10 @@ void RenderTargets::Init(
+     desc.debugName = "TemporalFeedback2";
+     TemporalFeedback2 = device->createTexture(desc);
+ 
+-    desc.format = nvrhi::Format::SRGBA8_UNORM;
++    // ManchesterRTX: with HDR10 output the "LDR" frame holds PQ code values in a 10-bit UNORM target like the back buffer
++    desc.format = g_HdrOutput ? nvrhi::Format::R10G10B10A2_UNORM : nvrhi::Format::SRGBA8_UNORM;
+     desc.isUAV = true;
+-    desc.isTypeless = true;
++    desc.isTypeless = !g_HdrOutput;
+     desc.debugName = "LdrColor";
+     LdrColor = device->createTexture(desc);
+     desc.debugName = "LdrColorScratch";
+diff --git a/Rtxpt/SampleCommon/SampleBaseApp.cpp b/Rtxpt/SampleCommon/SampleBaseApp.cpp
+index c85e7ee..a2d44af 100644
+--- a/Rtxpt/SampleCommon/SampleBaseApp.cpp
++++ b/Rtxpt/SampleCommon/SampleBaseApp.cpp
+@@ -17,6 +17,7 @@
+ 
+ #include <donut/app/ApplicationBase.h>
+ #include "../Sample.h"
++#include "../Manchester/ManchesterApp.h"
+ 
+ extern SampleUIData g_sampleUIData;
+ extern const char* g_windowTitle;
+@@ -185,6 +186,9 @@ void SampleBaseApp::RunMainLoop()
+ 
+ void SampleBaseApp::RegisterDonutCallback()
+ {
++    // ManchesterRTX: also log to stdout so launcher / test runs can redirect it to a file
++    donut::log::EnableOutputToConsole(true);
++
+     // Get the default call back first so we can pass messages through to it.
+     m_DonutDefaultCallback = donut::log::GetCallback();
+ 
+@@ -328,6 +332,38 @@ bool SampleBaseApp::ProcessCommandLine(int argc, char const* const* argv,
+     deviceParams.startFullscreen = m_CmdLine.fullscreen;
+     deviceParams.adapterIndex = m_CmdLine.adapterIndex;
+ 
++    if (m_CmdLine.App)  // ManchesterRTX app mode: the Manchester scene in a borderless (or centred) window, no RTXPT progress popups
++    {
++        const ManchesterSettings settings = ManchesterSettings::Load();
++        if (m_CmdLine.scene.empty())
++            preferredScene = "manchester.scene.json";
++        g_windowTitle = "Manchester RTX";
++        g_ProgressWindowsDisabled = true;
++        deviceParams.startHidden = true;    // shown by ManchesterApp once the start-up curtain is on screen (no blank flash)
++        // HDR10 presentation when Windows HDR is on for the display (and the user has not turned it off in the app)
++        g_DisplayHdr = QueryDisplayHdr();
++        if (settings.Hdr && g_DisplayHdr.Active)
++        {
++            deviceParams.swapChainFormat = nvrhi::Format::R10G10B10A2_UNORM;
++            deviceParams.hdr10ColorSpace = true;
++            g_HdrOutput = true;
++        }
++        donut::log::info("ManchesterRTX: display HDR %s, peak %.0f nits, full frame %.0f nits, SDR white %.0f nits -> %s output",
++            g_DisplayHdr.Active ? "on" : "off", g_DisplayHdr.MaxLuminance, g_DisplayHdr.MaxFullFrameLuminance, g_DisplayHdr.SdrWhiteNits, g_HdrOutput ? "HDR10" : "SDR");
++        if (mode != nullptr && !m_CmdLine.fullscreen)
++        {
++            int mx = 0, my = 0;
++            glfwGetMonitorPos(primMonitor, &mx, &my);
++            const int w = settings.Fullscreen ? mode->width : int(mode->width * 0.8f);
++            const int h = settings.Fullscreen ? mode->height : int(mode->height * 0.8f);
++            deviceParams.startBorderless = settings.Fullscreen;
++            deviceParams.backBufferWidth = w;
++            deviceParams.backBufferHeight = h;
++            deviceParams.windowPosX = mx + (mode->width - w) / 2;
++            deviceParams.windowPosY = my + (mode->height - h) / 2;
++        }
++    }
++
+     return true;
+ }
+ 
+diff --git a/Rtxpt/SampleCommon/SampleCommon.cpp b/Rtxpt/SampleCommon/SampleCommon.cpp
+index 55eacb0..54146c4 100644
+--- a/Rtxpt/SampleCommon/SampleCommon.cpp
++++ b/Rtxpt/SampleCommon/SampleCommon.cpp
+@@ -30,6 +30,71 @@ using namespace donut::math;
+ #pragma comment(lib, "Comctl32.lib")
+ #endif
+ 
++#include <dxgi1_6.h>
++#include <wrl/client.h>
++#include <string>
++#include <vector>
++#pragma comment(lib, "dxgi.lib")
++
++// ManchesterRTX: HDR state of the primary display - whether Windows HDR is on, the luminance range the display (or its
++// Windows HDR Calibration profile) reports, and Windows' SDR content brightness
++bool g_HdrOutput = false;
++DisplayHdrInfo g_DisplayHdr;
++
++DisplayHdrInfo QueryDisplayHdr()
++{
++    DisplayHdrInfo info;
++    using Microsoft::WRL::ComPtr;
++    ComPtr<IDXGIFactory1> factory;
++    if (FAILED(CreateDXGIFactory1(IID_PPV_ARGS(&factory))))
++        return info;
++    const HMONITOR primary = MonitorFromPoint(POINT{ 0, 0 }, MONITOR_DEFAULTTOPRIMARY);
++    std::wstring deviceName;
++    ComPtr<IDXGIAdapter1> adapter;
++    for (UINT a = 0; factory->EnumAdapters1(a, &adapter) != DXGI_ERROR_NOT_FOUND; a++)
++    {
++        ComPtr<IDXGIOutput> output;
++        for (UINT o = 0; adapter->EnumOutputs(o, &output) != DXGI_ERROR_NOT_FOUND; o++)
++        {
++            ComPtr<IDXGIOutput6> output6;
++            DXGI_OUTPUT_DESC1 desc = {};
++            if (FAILED(output.As(&output6)) || FAILED(output6->GetDesc1(&desc)) || desc.Monitor != primary)
++                continue;
++            info.Active = desc.ColorSpace == DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020;
++            info.MaxLuminance = desc.MaxLuminance;
++            info.MinLuminance = desc.MinLuminance;
++            info.MaxFullFrameLuminance = desc.MaxFullFrameLuminance;
++            deviceName = desc.DeviceName;
++        }
++    }
++    // SDR white level of the same display (DISPLAYCONFIG_SDR_WHITE_LEVEL: 1000 = 80 nits)
++    UINT32 pathCount = 0, modeCount = 0;
++    if (!deviceName.empty() && GetDisplayConfigBufferSizes(QDC_ONLY_ACTIVE_PATHS, &pathCount, &modeCount) == ERROR_SUCCESS)
++    {
++        std::vector<DISPLAYCONFIG_PATH_INFO> paths(pathCount);
++        std::vector<DISPLAYCONFIG_MODE_INFO> modes(modeCount);
++        if (QueryDisplayConfig(QDC_ONLY_ACTIVE_PATHS, &pathCount, paths.data(), &modeCount, modes.data(), nullptr) == ERROR_SUCCESS)
++            for (UINT32 i = 0; i < pathCount; i++)
++            {
++                DISPLAYCONFIG_SOURCE_DEVICE_NAME source = {};
++                source.header.type = DISPLAYCONFIG_DEVICE_INFO_GET_SOURCE_NAME;
++                source.header.size = sizeof(source);
++                source.header.adapterId = paths[i].sourceInfo.adapterId;
++                source.header.id = paths[i].sourceInfo.id;
++                if (DisplayConfigGetDeviceInfo(&source.header) != ERROR_SUCCESS || deviceName != source.viewGdiDeviceName)
++                    continue;
++                DISPLAYCONFIG_SDR_WHITE_LEVEL white = {};
++                white.header.type = DISPLAYCONFIG_DEVICE_INFO_GET_SDR_WHITE_LEVEL;
++                white.header.size = sizeof(white);
++                white.header.adapterId = paths[i].targetInfo.adapterId;
++                white.header.id = paths[i].targetInfo.id;
++                if (DisplayConfigGetDeviceInfo(&white.header) == ERROR_SUCCESS && white.SDRWhiteLevel > 0)
++                    info.SdrWhiteNits = white.SDRWhiteLevel / 1000.0f * 80.0f;
++            }
++    }
++    return info;
++}
++
+ bool EnsureDirectoryExists(const std::filesystem::path& dir)
+ {
+     if (std::filesystem::exists(dir))
+@@ -344,10 +409,12 @@ bool IsWindowFullscreen()
+ #endif
+ }
+ 
++bool g_ProgressWindowsDisabled = false;
++
+ int ProgressBarStart(const char * windowText)
+ {
+     // progress bar currently interfering with fullscreen so disable
+-    if (IsWindowFullscreen())
++    if (IsWindowFullscreen() || g_ProgressWindowsDisabled)
+         return -1;
+ 
+     for (int i = 0; i < g_ProgressSlotCount; i++)
+diff --git a/Rtxpt/SampleCommon/SampleCommon.h b/Rtxpt/SampleCommon/SampleCommon.h
+index b9dd558..0d6f099 100644
+--- a/Rtxpt/SampleCommon/SampleCommon.h
++++ b/Rtxpt/SampleCommon/SampleCommon.h
+@@ -118,6 +118,20 @@ bool CompressTextures(std::map<std::shared_ptr<donut::engine::LoadedTexture>, Te
+ 
+ void HelpersRegisterActiveWindow(); // call this from process main thread to grab current main window; this is optional and only used for progress bar to appear centered in the main window
+ void HelpersSetNonInteractive();
++extern bool g_ProgressWindowsDisabled;  // ManchesterRTX app mode shows its own loading state
++
++// ManchesterRTX: HDR10 presentation (chosen at start-up from the display and the app's settings)
++struct DisplayHdrInfo
++{
++    bool    Active          = false;    // Windows HDR is on for the display the app opens on
++    float   MaxLuminance    = 0.0f;     // nits, as the display (or its Windows HDR calibration profile) reports them
++    float   MinLuminance    = 0.0f;
++    float   MaxFullFrameLuminance = 0.0f;
++    float   SdrWhiteNits    = 80.0f;    // Windows' "SDR content brightness"
++};
++extern bool g_HdrOutput;
++extern DisplayHdrInfo g_DisplayHdr;
++DisplayHdrInfo QueryDisplayHdr();
+ int  ProgressBarStart(const char * windowText);
+ void ProgressBarStop(int slotIndex);
+ void ProgressBarUpdate(int slotIndex, int percentage);
+diff --git a/Rtxpt/SampleUI.cpp b/Rtxpt/SampleUI.cpp
+index 3365c9f..ec56f0a 100644
+--- a/Rtxpt/SampleUI.cpp
++++ b/Rtxpt/SampleUI.cpp
+@@ -30,6 +30,9 @@
+ 
+ #include "SampleCommon/CaptureScriptManager.h"
+ 
++#include "Manchester/ManchesterApp.h"
++#include "Manchester/ManchesterUILayer.h"
++
+ using namespace donut::app;
+ using namespace donut::engine;
+ 
+@@ -123,6 +126,11 @@ static void ApplyPreset(SampleUIData& ui, const PerformancePreset& p)
+     ui.ResetAccumulation = true;
+ }
+ 
++void ApplyPerformancePresetIndex(SampleUIData& ui, int index)
++{
++    ApplyPreset(ui, s_performancePresets[dm::clamp(index, 0, (int)std::size(s_performancePresets) - 1)]);
++}
++
+ SampleUI::SampleUI(DeviceManager* deviceManager, SampleBaseApp & baseApp, Sample& app, SampleUIData& ui, bool NVAPI_SERSupported, const CommandLineOptions& cmdLine)
+         : ImGui_Renderer(deviceManager)
+         , m_baseApp(baseApp)
+@@ -140,6 +148,33 @@ SampleUI::SampleUI(DeviceManager* deviceManager, SampleBaseApp & baseApp, Sample
+     // 
+     m_defaultFont = this->CreateFontFromFile(*nativeFS, GetLocalPath(c_AssetsFolder) / "fonts/DroidSans/DroidSans-Mono.ttf", 16.0f);
+ 
++    if (cmdLine.App)    // ManchesterRTX: system fonts for the Chinese GUI; only the glyphs the GUI uses are rasterised
++    {
++        ManchesterApp::BuildGlyphRanges(m_mTextGlyphs, m_mIconGlyphs);
++        const char* windir = getenv("WINDIR");
++        const std::filesystem::path fonts = std::filesystem::path(windir ? windir : "C:\\Windows") / "Fonts";
++        auto font = [&](const char* file, const char* fallback, float size, const ImWchar* ranges)
++        {
++            std::filesystem::path path = fonts / file;
++            if (!std::filesystem::exists(path) && fallback) path = fonts / fallback;
++            auto f = this->CreateFontFromFile(*nativeFS, path, size);
++            f->SetGlyphRanges(ranges);
++            return f;
++        };
++        // DengXian (等线) reads closest to PingFang among the system's Chinese faces: open, even strokes for labels and
++        // titles; Microsoft YaHei stands in where it is missing
++        m_mFontBody   = font("Deng.ttf",        "msyh.ttc",     16.0f, m_mTextGlyphs.Data);
++        m_mFontSmall  = font("Deng.ttf",        "msyh.ttc",     13.5f, m_mTextGlyphs.Data);
++        m_mFontBold   = font("Dengb.ttf",       "msyhbd.ttc",   16.0f, m_mTextGlyphs.Data);
++        m_mFontTitle  = font("Dengb.ttf",       "msyhbd.ttc",   23.0f, m_mTextGlyphs.Data);
++        m_mFontBrand  = font("bahnschrift.ttf", "segoeui.ttf",  25.0f, nullptr);
++        m_mFontDigits = font("bahnschrift.ttf", "segoeui.ttf",  16.0f, nullptr);
++        m_mFontIcons  = font("SegoeIcons.ttf",  "segmdl2.ttf",  18.0f, m_mIconGlyphs.Data);
++        m_mFontClock  = font("bahnschrift.ttf", "segoeui.ttf",  30.0f, nullptr);
++        m_mFontSmallBold = font("Dengb.ttf",    "msyhbd.ttc",   13.5f, m_mTextGlyphs.Data);
++        m_ui.ShowUI = false;    // the NVIDIA developer panel opens with F2
++    }
++
+     ImGui::GetIO().IniFilename = nullptr;
+ 
+     // Choose which, if any, hit object extension we can use
+@@ -192,6 +227,56 @@ bool SampleUI::MousePosUpdate(double xpos, double ypos)
+     return ImGui_Renderer::MousePosUpdate(xpos, ypos);
+ }
+ 
++void SampleUI::Render(nvrhi::IFramebuffer* framebuffer)
++{
++    ManchesterApp* manchester = m_app.GetManchester();
++    if (manchester == nullptr || !imgui_nvrhi)
++    {
++        ImGui_Renderer::Render(framebuffer);
++        return;
++    }
++
++    // ManchesterRTX: the GUI is drawn into its own premultiplied layer - liquid glass first, then the ImGui content -
++    // and composited over the frame; DLSS-G gets the layer and the hudless frame for UI recomposition
++    if (!m_uiLayer)
++        m_uiLayer = std::make_unique<ManchesterUILayer>(GetDevice(), m_app.GetShaderFactory(), m_app.GetCommonPasses());
++
++    nvrhi::ITexture* backBuffer = framebuffer->getDesc().colorAttachments[0].texture;
++    nvrhi::ITexture* hudless = m_app.GetHudlessColor();
++    if (hudless && (hudless->getDesc().width != backBuffer->getDesc().width || hudless->getDesc().height != backBuffer->getDesc().height))
++        hudless = nullptr;      // mid-resize
++
++    // the UI is built first, so the glass under it is this frame's layout (no lag behind sliding panels)
++    buildUI();
++    ImGui::Render();
++
++    UILayerOutput output;
++    output.Hdr10 = g_HdrOutput;
++    output.UIWhiteNits = manchester->GetUIWhiteNits();
++    m_commandList->open();
++    nvrhi::IFramebuffer* uiFramebuffer = m_uiLayer->Begin(m_commandList, backBuffer, hudless, manchester->GetGlassFrame(), output);
++    m_commandList->close();
++    GetDevice()->executeCommandList(m_commandList);
++
++    imgui_nvrhi->render(uiFramebuffer);
++    m_imguiFrameOpened = false;
++
++    m_commandList->open();
++    m_uiLayer->Finish(m_commandList);
++    m_uiLayer->Composite(m_commandList, framebuffer, backBuffer);
++#if DONUT_WITH_STREAMLINE
++    if (hudless != nullptr && m_ui.ActualDLSSFGMode() == SI::DLSSGMode::eOn)
++    {
++        m_commandList->setTextureState(hudless, nvrhi::AllSubresources, nvrhi::ResourceStates::ShaderResource);
++        m_commandList->setTextureState(m_uiLayer->GetTexture(), nvrhi::AllSubresources, nvrhi::ResourceStates::ShaderResource);
++        m_commandList->commitBarriers();
++        GetDeviceManager()->GetStreamline().TagResourcesHudlessAndUI(m_commandList, m_app.GetCurrentView().get(), hudless, m_uiLayer->GetTexture());
++    }
++#endif
++    m_commandList->close();
++    GetDevice()->executeCommandList(m_commandList);
++}
++
+ std::string TrimTogglable(const std::string text)
+ {
+     size_t tog = text.rfind("_togglable");
+@@ -351,7 +436,8 @@ void SampleUI::DLSSFGSelectorUI()
+     const char* items[] = { "Off", "2x", "3x", "4x" };
+     const int itemCount = IM_ARRAYSIZE(items);
+ 
+-    static int currentItem = 0;
++    // ManchesterRTX: derive the selection from the UI state so --dlssFG survives the first UI frame
++    int currentItem = (m_ui.DLSSFGMode == donut::app::StreamlineInterface::DLSSGMode::eOn) ? std::clamp((int)m_ui.DLSSFGNumFramesToGenerate, 1, itemCount - 1) : 0;
+     if (ImGui::BeginCombo("Frame Generation", items[currentItem]))
+     {
+         for (int itemId = 0; itemId < itemCount; itemId++)
+@@ -381,6 +467,17 @@ void SampleUI::DLSSFGSelectorUI()
+ 
+ void SampleUI::buildUI(void)
+ {
++    if (ManchesterApp* manchester = m_app.GetManchester())
++    {
++        ManchesterFonts fonts;
++        auto get = [](const std::shared_ptr<RegisteredFont>& f) { return f ? f->GetScaledFont() : nullptr; };
++        fonts.Body = get(m_mFontBody); fonts.Small = get(m_mFontSmall); fonts.Bold = get(m_mFontBold); fonts.Title = get(m_mFontTitle);
++        fonts.Brand = get(m_mFontBrand); fonts.Digits = get(m_mFontDigits); fonts.Icons = get(m_mFontIcons); fonts.Clock = get(m_mFontClock); fonts.SmallBold = get(m_mFontSmallBold);
++        float scaleX = 1.0f, scaleY = 1.0f;
++        GetDeviceManager()->GetDPIScaleInfo(scaleX, scaleY);
++        manchester->BuildUI(fonts, scaleX);
++    }
++
+     if (!m_ui.ShowUI)
+         return;
+ 
+@@ -1116,11 +1213,12 @@ void SampleUI::buildUI(void)
+ 						case SI::DLSSRRPreset::eDefault: presetIndex = 0; break;
+ 						case SI::DLSSRRPreset::ePresetD: presetIndex = 1; break;
+ 						case SI::DLSSRRPreset::ePresetE: presetIndex = 2; break;
++						case SI::DLSSRRPreset::ePresetF: presetIndex = 3; break;   // ManchesterRTX: DLSS 310.9 second-generation transformer
+ 					}
+-                    ImGui::Combo("DLSS-RR Preset", &presetIndex, "Default\0PresetD\0PresetE\0");
+-					const SI::DLSSRRPreset DLSSRR_PRESETS[] = { SI::DLSSRRPreset::eDefault, SI::DLSSRRPreset::ePresetD, SI::DLSSRRPreset::ePresetE };  // Maps combo index to enum value
++                    ImGui::Combo("DLSS-RR Preset", &presetIndex, "Default\0PresetD\0PresetE\0PresetF\0");
++					const SI::DLSSRRPreset DLSSRR_PRESETS[] = { SI::DLSSRRPreset::eDefault, SI::DLSSRRPreset::ePresetD, SI::DLSSRRPreset::ePresetE, SI::DLSSRRPreset::ePresetF };  // Maps combo index to enum value
+ 					m_ui.DLSRRPreset = DLSSRR_PRESETS[presetIndex];
+-					m_ui.DLSRRPreset = clamp(m_ui.DLSRRPreset, SI::DLSSRRPreset::eDefault, SI::DLSSRRPreset::ePresetE);
++					m_ui.DLSRRPreset = clamp(m_ui.DLSRRPreset, SI::DLSSRRPreset::eDefault, SI::DLSSRRPreset::ePresetF);
+                 }
+     #endif    
+                 ImGui::Combo("AA Camera Jitter", (int*)&m_ui.TemporalAntiAliasingJitter, "MSAA\0Halton\0R2\0White Noise\0");
+diff --git a/Rtxpt/SampleUI.h b/Rtxpt/SampleUI.h
+index 99a4ebe..68e27f1 100644
+--- a/Rtxpt/SampleUI.h
++++ b/Rtxpt/SampleUI.h
+@@ -242,6 +242,7 @@ struct SampleUIData
+     bool                                IsDLSSSuported = false;
+     static constexpr SI::DLSSMode       DLSSModeDefault = SI::DLSSMode::eBalanced;
+     SI::DLSSMode                        DLSSMode = DLSSModeDefault;
++    SI::DLSSMode                        DLSSModeStartup = DLSSModeDefault;     // ManchesterRTX: mode DLSS resets to (set by --dlssMode)
+     SI::DLSSMode                        DLSSLastMode = SI::DLSSMode::eOff;
+     donut::math::uint2                  DLSSLastDisplaySize = { 0,0 };
+     int                                 DLSSLastRealtimeAA = 0;
+@@ -269,7 +270,7 @@ struct SampleUIData
+ 
+     // DLSS-RR specific parameters
+     bool                                IsDLSSRRSupported = false;
+-    SI::DLSSRRPreset                    DLSRRPreset = SI::DLSSRRPreset::ePresetE;
++    SI::DLSSRRPreset                    DLSRRPreset = SI::DLSSRRPreset::ePresetF;  // ManchesterRTX: latest RR model (DLSS 310.9, Streamline 2.14)
+ #endif // DONUT_WITH_STREAMLINE
+ 
+     float                               DLSSRRMicroJitter = 0.1f;
+@@ -319,6 +320,9 @@ struct SampleUIData
+ 
+ extern SampleUIData g_sampleUIData;
+ 
++// ManchesterRTX: apply one of the UI's performance presets (0 Ultra Performance .. 4 Ultra Quality)
++void ApplyPerformancePresetIndex(SampleUIData& ui, int index);
++
+ class SampleUI : public donut::app::ImGui_Renderer
+ {
+ public:
+@@ -332,6 +336,7 @@ private:
+     virtual bool MousePosUpdate(double xpos, double ypos) override;
+     virtual void DisplayScaleChanged(float scaleX, float scaleY) override { m_currentScale = scaleX; assert( scaleX == scaleY ); }
+     virtual void Animate(float elapsedTimeSeconds) override;
++    virtual void Render(nvrhi::IFramebuffer* framebuffer) override;    // ManchesterRTX: app mode draws through a UI layer
+ 
+     bool BuildUIScriptsAndEtc(void);
+     void BuildUIResolutionPicker();
+@@ -360,6 +365,11 @@ private:
+ #if ENABLE_DEBUG_DELTA_TREE_VIZUALISATION
+     ImNodes::Ez::Context* m_ImNodesContext;
+ #endif
++
++    // ManchesterRTX app mode fonts (Microsoft YaHei, Bahnschrift, Segoe Fluent Icons) and the glyph ranges they rasterise
++    std::shared_ptr<donut::app::RegisteredFont> m_mFontBody, m_mFontSmall, m_mFontBold, m_mFontTitle, m_mFontBrand, m_mFontDigits, m_mFontIcons, m_mFontClock, m_mFontSmallBold;
++    ImVector<ImWchar>           m_mTextGlyphs, m_mIconGlyphs;
++    std::unique_ptr<class ManchesterUILayer> m_uiLayer;     // UI colour + alpha layer with the liquid glass pass
+ };
+ 
+ void UpdateTogglableNodes(std::vector<TogglableNode>& TogglableNodes, donut::engine::SceneGraphNode* node);
+diff --git a/Rtxpt/ToneMapper/ToneMapping.ps.hlsli b/Rtxpt/ToneMapper/ToneMapping.ps.hlsli
+index 6d36aee..601bb3b 100644
+--- a/Rtxpt/ToneMapper/ToneMapping.ps.hlsli
++++ b/Rtxpt/ToneMapper/ToneMapping.ps.hlsli
+@@ -103,8 +103,30 @@ float3 toneMapAces(float3 color)
+     float D = 0.59;
+     float E = 0.14;
+ 
+-    color = saturate((color*(A*color+B))/(color*(C*color+D)+E));
+-    return color;
++    float3 sdr = saturate((color*(A*color+B))/(color*(C*color+D)+E));
++    if (gParams.outputMode != TONEMAPPING_OUTPUT_HDR10)
++        return sdr;
++
++    // ManchesterRTX HDR10: the same curve with its shoulder raised from SDR white to the display's peak (in units of paper
++    // white). Toe and mid tones stay those of the SDR picture; from the upper mid tones on the extended curve takes over,
++    // so sunlit stone, the sky near the sun, lit windows and glints on glass keep their brightness instead of clipping
++    const float peak = max(gParams.peakNits / gParams.paperWhiteNits, 1.0);
++    const float3 ext = (color*(A*color+B))/(color*((A / peak)*color+D)+E);
++    return lerp(sdr, ext, smoothstep(0.3, 0.95, sdr));
++}
++
++// ManchesterRTX HDR10 encoding: BT.709 -> BT.2020 primaries, then the SMPTE ST 2084 (PQ) inverse EOTF of absolute nits
++float3 Rec709ToRec2020(float3 c)
++{
++    return float3(dot(c, float3(0.6274040, 0.3292820, 0.0433136)),
++                  dot(c, float3(0.0690970, 0.9195400, 0.0113612)),
++                  dot(c, float3(0.0163916, 0.0880132, 0.8955950)));
++}
++float3 EncodePQ(float3 nits)
++{
++    const float m1 = 0.1593017578125, m2 = 78.84375, c1 = 0.8359375, c2 = 18.8515625, c3 = 18.6875;
++    const float3 y = pow(saturate(nits / 10000.0), m1);
++    return pow((c1 + c2 * y) / (1.0 + c3 * y), m2);
+ }
+ 
+ float3 toneMap(float3 color)
+@@ -166,10 +188,41 @@ float4 applyToneMapping(float2 texC)
+         // apply tone mapping
+         finalColor = toneMap(finalColor);
+ 
+-        if (gParams.clamped)
++        // ManchesterRTX grading: saturation, contrast around mid grey (in square-root space), vignette
++        finalColor = max(0, finalColor);
++        float lum = calcLuminance(finalColor);
++        finalColor = max(0, lerp(lum.xxx, finalColor, gParams.saturation));
++        float3 perceptual = sqrt(finalColor);
++        perceptual = max(0, (perceptual - 0.45) * gParams.contrast + 0.45);
++        finalColor = perceptual * perceptual;
++        float2 fromCentre = texC - 0.5;
++        finalColor *= saturate(1.0 - gParams.vignette * dot(fromCentre, fromCentre) * 2.0);
++
++        if (gParams.outputMode == TONEMAPPING_OUTPUT_HDR10)
++            finalColor = min(finalColor, max(gParams.peakNits / gParams.paperWhiteNits, 1.0));
++        else if (gParams.clamped)
+             finalColor = saturate(finalColor);
+     }
+ 
++    // ManchesterRTX: a triangular dither of one code value, different every frame, just before the target quantises the
++    // colour (10-bit PQ in HDR10, 8-bit sRGB in SDR): smooth skies, haze and night gradients show no steps
++    float2 dim; gColorTex.GetDimensions(dim.x, dim.y);
++    const uint2 px = uint2(texC * dim);
++    uint h = px.x * 1973u + px.y * 9277u + uint(gParams.ditherSeed) * 26699u;
++    h ^= h >> 13; h *= 0x5bd1e995u; h ^= h >> 15;
++    const float tri = float(h & 0xffffu) / 65535.0 + float(h >> 16) / 65535.0 - 1.0;
++
++    // HDR10 targets are plain UNORM: write the PQ code values of the BT.2020 colour in nits
++    if (gParams.outputMode == TONEMAPPING_OUTPUT_HDR10)
++        finalColor = saturate(EncodePQ(Rec709ToRec2020(max(finalColor, 0)) * gParams.paperWhiteNits) + tri / 1023.0);
++    else
++    {
++        float3 e = max(finalColor, 0);     // the sRGB target encodes linear values; dither in its encoded domain
++        e = select(e <= 0.0031308, e * 12.92, 1.055 * pow(e, 1.0 / 2.4) - 0.055);
++        e = saturate(e + tri / 255.0);
++        finalColor = select(e <= 0.04045, e / 12.92, pow((e + 0.055) / 1.055, 2.4));
++    }
++
+     return float4(finalColor, color.a);
+ }
+ 
+diff --git a/Rtxpt/ToneMapper/ToneMappingPasses.cpp b/Rtxpt/ToneMapper/ToneMappingPasses.cpp
+index c18e3ad..49ec8c5 100644
+--- a/Rtxpt/ToneMapper/ToneMappingPasses.cpp
++++ b/Rtxpt/ToneMapper/ToneMappingPasses.cpp
+@@ -12,6 +12,8 @@
+ #include <donut/engine/CommonRenderPasses.h>
+ #include <donut/engine/View.h>
+ #include <sstream>
++#include <algorithm>
++#include <cmath>
+ #include <assert.h>
+ #include <donut/engine/FramebufferFactory.h>
+ #include <donut/core/log.h>
+@@ -286,6 +288,22 @@ bool ToneMappingPass::Render(
+                     viewData.avgLuminanceLastCaptured = std::exp2f( *static_cast<float*>(pData) );
+                     m_device->unmapBuffer(viewData.avgLuminanceBufferReadback[toReadIndex]);
+                 }
++                // ManchesterRTX: eye adaptation - the exposure follows the measured average in log space with a time
++                // constant instead of jumping with every frame (no flicker when bright sky or lit windows move in and out
++                // of view); brightening adapts a little faster than darkening, as eyes do
++                {
++                    float& adapted = viewData.avgLuminanceAdapted;
++                    const float measured = std::max(viewData.avgLuminanceLastCaptured, 1e-8f);
++                    if (!(adapted > 0.0f) || m_ResetAdaptation || m_AdaptationRate <= 0.0f || !std::isfinite(adapted))
++                        adapted = measured;
++                    else
++                    {
++                        const float la = std::log2(adapted), lm = std::log2(measured);
++                        const float rate = m_AdaptationRate * (lm > la ? 1.35f : 1.0f);
++                        const float k = 1.0f - std::exp(-std::clamp(m_FrameTime, 0.0f, 0.25f) * rate);
++                        adapted = std::exp2(la + (lm - la) * k);
++                    }
++                }
+             }
+ #endif
+ 		}
+@@ -293,6 +311,7 @@ bool ToneMappingPass::Render(
+     }
+ 
+     commandList->beginMarker("ToneMapping");
++    m_DitherFrame++;
+     for (uint viewIndex = 0; viewIndex < compositeView.GetNumChildViews(ViewType::PLANAR); viewIndex++)
+     {
+ 		nvrhi::BindingSetHandle& bindingSet = m_PerView[viewIndex].colorBindingSet;
+@@ -316,36 +335,7 @@ bool ToneMappingPass::Render(
+         state.bindings = { bindingSet };
+         state.viewport = view->GetViewportState();
+ 
+-        ToneMappingConstants toneMappingConsts = {};
+-        toneMappingConsts.whiteScale = m_WhiteScale;
+-        toneMappingConsts.whiteMaxLuminance = m_WhiteMaxLuminance;
+-        toneMappingConsts.clamped = m_Clamped;
+-        toneMappingConsts.toneMapOperator = (uint32_t)m_ToneMapOperator;
+-        toneMappingConsts.autoExposure = m_AutoExposure;
+-#if TONEMAPPING_AUTOEXPOSURE_CPU
+-        toneMappingConsts.avgLuminance = m_PerView[viewIndex].avgLuminanceLastCaptured;
+-#else
+-        toneMappingConsts.avgLuminance = 0; // unused
+-#endif
+-        if(m_AutoExposure)
+-        {
+-            toneMappingConsts.autoExposureLumValueMin = std::exp2f( m_ExposureValueMin );
+-            toneMappingConsts.autoExposureLumValueMax = std::exp2f( m_ExposureValueMax );
+-        }
+-        else
+-        {
+-            toneMappingConsts.autoExposureLumValueMin = std::exp2f( -16.0 );
+-            toneMappingConsts.autoExposureLumValueMax = std::exp2f( 16.0 );
+-        }
+-
+-        // Copy 3x3 to 3x4 Is there a better way to do this?
+-       /* affine3 transform(m_ColorTransform, float3(0,0,0));
+-        affineToColumnMajor(transform, toneMappingConsts.colorTransform);*/ //incorrect output, why?
+-		toneMappingConsts.colorTransform = float3x4::identity();
+-		toneMappingConsts.colorTransform[0] = float4(m_ColorTransform.col(0), 0);
+-		toneMappingConsts.colorTransform[1] = float4(m_ColorTransform.col(1), 0);
+-		toneMappingConsts.colorTransform[2] = float4(m_ColorTransform.col(2), 0);
+-        toneMappingConsts.enabled = enabled;
++        const ToneMappingConstants toneMappingConsts = FillConstants(viewIndex, enabled, m_OutputMode);
+         commandList->writeBuffer(m_ToneMappingCB, &toneMappingConsts, sizeof(ToneMappingConstants));
+ 
+         commandList->setGraphicsState(state);
+@@ -359,6 +349,83 @@ bool ToneMappingPass::Render(
+     return commandListWasClosed;
+ }
+ 
++ToneMappingConstants ToneMappingPass::FillConstants(uint viewIndex, bool enabled, uint32_t outputMode) const
++{
++    ToneMappingConstants toneMappingConsts = {};
++    toneMappingConsts.whiteScale = m_WhiteScale;
++    toneMappingConsts.whiteMaxLuminance = m_WhiteMaxLuminance;
++    toneMappingConsts.clamped = m_Clamped;
++    toneMappingConsts.toneMapOperator = (uint32_t)m_ToneMapOperator;
++    toneMappingConsts.autoExposure = m_AutoExposure;
++#if TONEMAPPING_AUTOEXPOSURE_CPU
++    toneMappingConsts.avgLuminance = m_PerView[viewIndex].avgLuminanceAdapted > 0.0f ? m_PerView[viewIndex].avgLuminanceAdapted : m_PerView[viewIndex].avgLuminanceLastCaptured;
++#else
++    toneMappingConsts.avgLuminance = 0; // unused
++#endif
++    if(m_AutoExposure)
++    {
++        toneMappingConsts.autoExposureLumValueMin = std::exp2f( m_ExposureValueMin );
++        toneMappingConsts.autoExposureLumValueMax = std::exp2f( m_ExposureValueMax );
++    }
++    else
++    {
++        toneMappingConsts.autoExposureLumValueMin = std::exp2f( -16.0 );
++        toneMappingConsts.autoExposureLumValueMax = std::exp2f( 16.0 );
++    }
++
++    // Copy 3x3 to 3x4 Is there a better way to do this?
++   /* affine3 transform(m_ColorTransform, float3(0,0,0));
++    affineToColumnMajor(transform, toneMappingConsts.colorTransform);*/ //incorrect output, why?
++	toneMappingConsts.colorTransform = float3x4::identity();
++	toneMappingConsts.colorTransform[0] = float4(m_ColorTransform.col(0), 0);
++	toneMappingConsts.colorTransform[1] = float4(m_ColorTransform.col(1), 0);
++	toneMappingConsts.colorTransform[2] = float4(m_ColorTransform.col(2), 0);
++    toneMappingConsts.enabled = enabled;
++    toneMappingConsts.saturation = m_Saturation;
++    toneMappingConsts.contrast = m_Contrast;
++    toneMappingConsts.vignette = m_Vignette;
++    toneMappingConsts.outputMode = outputMode;
++    toneMappingConsts.paperWhiteNits = std::max(m_PaperWhiteNits, 1.0f);
++    toneMappingConsts.peakNits = std::max(m_PeakNits, m_PaperWhiteNits);
++    toneMappingConsts.ditherSeed = float(m_DitherFrame & 1023u);
++    return toneMappingConsts;
++}
++
++void ToneMappingPass::RenderSDR(nvrhi::ICommandList* commandList, const donut::engine::ICompositeView& compositeView, nvrhi::ITexture* sourceTexture, nvrhi::IFramebuffer* target)
++{
++    const nvrhi::Format format = target->getFramebufferInfo().colorFormats.empty() ? nvrhi::Format::UNKNOWN : target->getFramebufferInfo().colorFormats[0];
++    if (!m_SdrPso || m_SdrPsoFormat != format)
++    {
++        nvrhi::GraphicsPipelineDesc pipelineDesc;
++        pipelineDesc.primType = nvrhi::PrimitiveType::TriangleStrip;
++        pipelineDesc.VS = m_commonPasses->m_FullscreenVS;
++        pipelineDesc.PS = m_ToneMapShader;
++        pipelineDesc.bindingLayouts = { m_ToneMapBindingLayout };
++        pipelineDesc.renderState.rasterState.setCullNone();
++        pipelineDesc.renderState.depthStencilState.depthTestEnable = false;
++        pipelineDesc.renderState.depthStencilState.stencilEnable = false;
++        m_SdrPso = m_device->createGraphicsPipeline(pipelineDesc, target);
++        m_SdrPsoFormat = format;
++    }
++    if (m_PerView.empty() || !m_PerView[0].colorBindingSet || m_PerView[0].sourceTexture != sourceTexture)
++        return;     // Render() builds the binding set first
++
++    commandList->beginMarker("ToneMappingSDR");
++    nvrhi::GraphicsState state;
++    state.pipeline = m_SdrPso;
++    state.framebuffer = target;
++    state.bindings = { m_PerView[0].colorBindingSet };
++    state.viewport.addViewportAndScissorRect(target->getFramebufferInfo().getViewport());
++    const ToneMappingConstants toneMappingConsts = FillConstants(0, true, TONEMAPPING_OUTPUT_SDR);
++    commandList->writeBuffer(m_ToneMappingCB, &toneMappingConsts, sizeof(ToneMappingConstants));
++    commandList->setGraphicsState(state);
++    nvrhi::DrawArguments args;
++    args.instanceCount = 1;
++    args.vertexCount = 4;
++    commandList->draw(args);
++    commandList->endMarker();
++}
++
+ void ToneMappingPass::AdvanceFrame(float frameTime)
+ {
+     m_FrameTime = frameTime;
+@@ -386,6 +453,14 @@ void ToneMappingPass::SetParameters(const ToneMappingParameters& params)
+     m_Clamped = params.clamped;
+     m_ExposureValueMin = params.exposureValueMin;
+     m_ExposureValueMax = params.exposureValueMax;
++    m_Saturation = params.saturation;
++    m_Contrast = params.contrast;
++    m_Vignette = params.vignette;
++    m_AdaptationRate = params.adaptationRate;
++    m_ResetAdaptation = params.resetAdaptation;
++    m_OutputMode = params.outputMode;
++    m_PaperWhiteNits = params.paperWhiteNits;
++    m_PeakNits = params.peakNits;
+ }
+ 
+ 
+@@ -452,7 +527,8 @@ float3 ToneMappingPass::GetPreExposedGray(uint viewIndex)
+     float3 result = inverse(m_ColorTransform) * float3(0.18f, 0.18f, 0.18f);
+     if (m_AutoExposure)
+     {
+-        result /= float3((float)TONEMAPPING_EXPOSURE_KEY / m_PerView[viewIndex].avgLuminanceLastCaptured);
++        const float lum = m_PerView[viewIndex].avgLuminanceAdapted > 0.0f ? m_PerView[viewIndex].avgLuminanceAdapted : m_PerView[viewIndex].avgLuminanceLastCaptured;
++        result /= float3((float)TONEMAPPING_EXPOSURE_KEY / lum);
+     }
+     return result;
+ }
+diff --git a/Rtxpt/ToneMapper/ToneMappingPasses.h b/Rtxpt/ToneMapper/ToneMappingPasses.h
+index b4c58b4..da1c578 100644
+--- a/Rtxpt/ToneMapper/ToneMappingPasses.h
++++ b/Rtxpt/ToneMapper/ToneMappingPasses.h
+@@ -51,6 +51,14 @@ struct ToneMappingParameters
+     bool clamped = true;
+     float exposureValueMin = -16.0f;
+     float exposureValueMax = 16.0f;
++    float saturation = 1.0f;        // ManchesterRTX grading
++    float contrast = 1.0f;
++    float vignette = 0.0f;
++    float adaptationRate = 0.0f;    // ManchesterRTX: eye adaptation of the auto exposure (1/s, in log space); 0 follows each frame at once
++    bool  resetAdaptation = false;  // jump straight to the measured exposure (scene start)
++    uint32_t outputMode = TONEMAPPING_OUTPUT_SDR;   // ManchesterRTX: SDR or HDR10 (PQ) output
++    float paperWhiteNits = 203.0f;  // HDR10: SDR white
++    float peakNits = 1000.0f;       // HDR10: display peak
+ };
+ 
+ static const std::unordered_map<ExposureMode, std::string> ExposureModeToString = {
+@@ -91,6 +99,7 @@ private:
+         nvrhi::BufferHandle avgLuminanceBufferReadback[cReadbackLag];
+         int                 avgLuminanceLastWritten     = -1;
+         float               avgLuminanceLastCaptured    = 0.0;
++        float               avgLuminanceAdapted         = 0.0;     // ManchesterRTX: what the exposure follows (smoothed)
+ #endif
+     };
+         
+@@ -108,6 +117,8 @@ private:
+ 
+     nvrhi::BindingLayoutHandle m_ToneMapBindingLayout;
+     nvrhi::GraphicsPipelineHandle m_ToneMapPso;
++    nvrhi::GraphicsPipelineHandle m_SdrPso;             // ManchesterRTX: SDR copy of an HDR10 frame (screenshots)
++    nvrhi::Format m_SdrPsoFormat = nvrhi::Format::UNKNOWN;
+ #if TONEMAPPING_AUTOEXPOSURE_CPU
+     nvrhi::ShaderHandle m_CaptureLuminanceShader;
+     nvrhi::BindingLayoutHandle m_CaptureLumBindingLayout;
+@@ -133,6 +144,12 @@ private:
+     float m_WhiteMaxLuminance;
+     float m_WhiteScale;
+     int m_Clamped;
++    float m_Saturation = 1.0f, m_Contrast = 1.0f, m_Vignette = 0.0f;
++    float m_AdaptationRate = 0.0f;
++    bool m_ResetAdaptation = false;
++    uint32_t m_OutputMode = TONEMAPPING_OUTPUT_SDR;
++    float m_PaperWhiteNits = 203.0f, m_PeakNits = 1000.0f;
++    uint32_t m_DitherFrame = 0;
+         
+     //Pre-computed fields
+     float3x3 m_WhiteBalanceTransform; 
+@@ -146,6 +163,7 @@ private:
+ 	void UpdateWhiteBalanceTransform();
+ 	void UpdateColorTransform();
+     void GenerateMips(nvrhi::ICommandList* commandList, uint32_t numberOfViews);
++    ToneMappingConstants FillConstants(uint viewIndex, bool enabled, uint32_t outputMode) const;
+ public:
+     struct CreateParameters
+     {
+@@ -170,6 +188,10 @@ public:
+     // note - if enable == false, it still does autoexposure (if enabled) and everything else, but the output is just passthrough
+     bool Render( nvrhi::ICommandList* commandList, const donut::engine::ICompositeView& compositeView, nvrhi::ITexture* sourceTexture, bool enabled );
+ 
++    // ManchesterRTX: tone map the same frame again into an SDR (sRGB) framebuffer, with this frame's exposure; used for
++    // screenshots while the display runs in HDR10. Call after Render.
++    void RenderSDR( nvrhi::ICommandList* commandList, const donut::engine::ICompositeView& compositeView, nvrhi::ITexture* sourceTexture, nvrhi::IFramebuffer* target );
++
+ #if TONEMAPPING_AUTOEXPOSURE_CPU
+     float3 GetPreExposedGray( uint viewIndex );
+ #endif
+diff --git a/Rtxpt/ToneMapper/ToneMapping_cb.h b/Rtxpt/ToneMapper/ToneMapping_cb.h
+index a7c26d8..38cb8a6 100644
+--- a/Rtxpt/ToneMapper/ToneMapping_cb.h
++++ b/Rtxpt/ToneMapper/ToneMapping_cb.h
+@@ -37,10 +37,17 @@ struct ToneMappingConstants
+ 	float autoExposureLumValueMax;
+     float3x4 colorTransform;
+     uint enabled;
+-    uint _padding0;
+-    uint _padding1;
+-    uint _padding2;
++    float saturation;       // ManchesterRTX grading after the tone curve: 1 = unchanged
++    float contrast;         // around mid grey, in a perceptual (square root) space
++    float vignette;         // darkening towards the corners
++    uint  outputMode;       // ManchesterRTX: 0 SDR (linear into an sRGB target), 1 HDR10 (ST 2084 PQ, BT.2020 primaries)
++    float paperWhiteNits;   // HDR10: the brightness of SDR white (and of the GUI)
++    float peakNits;         // HDR10: the display's peak brightness; the tone curve's shoulder rolls off towards it
++    float ditherSeed;       // ManchesterRTX: changes every frame (dither before the target's quantisation)
+ };
+ 
++#define TONEMAPPING_OUTPUT_SDR      0
++#define TONEMAPPING_OUTPUT_HDR10    1
++
+ 
+ #endif // TONEMAPPING_CB_H
+\ No newline at end of file
+diff --git a/Rtxpt/shaders.cfg b/Rtxpt/shaders.cfg
+index debd007..e112e31 100644
+--- a/Rtxpt/shaders.cfg
++++ b/Rtxpt/shaders.cfg
+@@ -1,6 +1,10 @@
+ Misc/DebugLines.hlsl -T vs -E main_vs -D DRAW_LINES_SHADERS_OLD=1
+ Misc/DebugLines.hlsl -T ps -E main_ps -D DRAW_LINES_SHADERS_OLD=1
+ Misc/ZoomTool.hlsl -T cs -E main
++Manchester/LiquidGlass.hlsl -T ps -E DownsamplePS -D GLASS_DOWNSAMPLE=1
++Manchester/LiquidGlass.hlsl -T ps -E BlurPS -D GLASS_BLUR=1
++Manchester/LiquidGlass.hlsl -T ps -E GlassPS -D GLASS_SHADE=1
++Manchester/LiquidGlass.hlsl -T ps -E EncodePS -D GLASS_ENCODE=1
+ Shaders/Libraries/ShaderDebug/ShaderDebug.hlsl -T vs -E main_vs -D DRAW_TRIANGLES_SHADERS=1
+ Shaders/Libraries/ShaderDebug/ShaderDebug.hlsl -T ps -E main_ps -D DRAW_TRIANGLES_SHADERS=1
+ Shaders/Libraries/ShaderDebug/ShaderDebug.hlsl -T vs -E main_vs -D DRAW_LINES_SHADERS=1
+@@ -87,3 +91,5 @@ RTXDI/GITemporalResampling.hlsl -T cs -D USE_RAY_QUERY=1 -DNVRHI_D3D12_WITH_DXR1
+ RTXDI/GISpatialResampling.hlsl -T cs -D USE_RAY_QUERY=1 -DNVRHI_D3D12_WITH_DXR12_OPACITY_MICROMAP=1
+ RTXDI/GIFinalShading.hlsl -T cs -D USE_RAY_QUERY=1 -DNVRHI_D3D12_WITH_DXR12_OPACITY_MICROMAP=1
+ RTXDI/FusedDIGIFinalShading.hlsl -T cs -D USE_RAY_QUERY=1 -DNVRHI_D3D12_WITH_DXR12_OPACITY_MICROMAP=1
++Manchester/Atmosphere.hlsl -T cs -E MarchCS -D ATMO_MARCH=1
++Manchester/Atmosphere.hlsl -T cs -E CompositeCS -D ATMO_COMPOSITE=1

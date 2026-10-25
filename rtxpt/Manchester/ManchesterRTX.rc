@@ -1,0 +1,2 @@
+// ManchesterRTX application icon; GLFW loads the GLFW_ICON resource for its windows
+GLFW_ICON ICON "ManchesterRTX.ico"

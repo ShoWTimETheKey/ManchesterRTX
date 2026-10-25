@@ -1,0 +1,494 @@
+{
+  "date": {
+    "dayOfYear": 207,
+    "lat": 53.4794,
+    "lon": -2.2453,
+    "utcOffset": 1
+  },
+  "weathers": [
+    {
+      "id": "day",
+      "name": "正午",
+      "desc": "高悬的太阳 · 云影掠过",
+      "en": {
+        "name": "Noon",
+        "desc": "High sun · drifting cloud shadows"
+      },
+      "icon": "noon",
+      "time": 12,
+      "exposure": 0,
+      "exposureMin": -2,
+      "exposureMax": 14,
+      "moon": 0,
+      "sky": {
+        "clouds": 0.42,
+        "brightness": 1,
+        "sun": 5
+      },
+      "haze": {
+        "density": 0.00011,
+        "height": 480,
+        "shafts": 1.6,
+        "ambient": 1,
+        "g": 0.72,
+        "cloudShadow": 0.6
+      },
+      "grade": {
+        "bloom": 0.004,
+        "bloomRadius": 8,
+        "saturation": 1.08,
+        "contrast": 1.05,
+        "vignette": 0.14,
+        "whitePoint": 6850
+      },
+      "emissive": {
+        "shop": 0,
+        "glassBLit": 0,
+        "glassDLit": 0,
+        "winLit": 0,
+        "winLit2": 0,
+        "glassKLit": 0,
+        "glassGLit": 0,
+        "glassTLit": 0,
+        "glassSLit": 0,
+        "clock": 0,
+        "leadedLit": 0,
+        "acerLit": 0,
+        "glassNavyLit": 0,
+        "floodLamp": 0,
+        "lamp": 0
+      }
+    },
+    {
+      "id": "clear",
+      "name": "午后",
+      "desc": "低斜阳光 · 长影与光束",
+      "en": {
+        "name": "Afternoon",
+        "desc": "Low sun · long shadows and light shafts"
+      },
+      "icon": "afternoon",
+      "time": 17.5,
+      "exposure": 0,
+      "exposureMin": -2,
+      "exposureMax": 14,
+      "moon": 0,
+      "sky": {
+        "clouds": 0.44,
+        "brightness": 1,
+        "sun": 5
+      },
+      "haze": {
+        "density": 0.00017,
+        "height": 340,
+        "shafts": 2.5,
+        "ambient": 1,
+        "g": 0.78,
+        "cloudShadow": 0.55
+      },
+      "grade": {
+        "bloom": 0.006,
+        "bloomRadius": 9,
+        "saturation": 1.1,
+        "contrast": 1.07,
+        "vignette": 0.18,
+        "whitePoint": 6800
+      },
+      "emissive": {
+        "shop": 0,
+        "glassBLit": 0,
+        "glassDLit": 0,
+        "winLit": 0,
+        "winLit2": 0,
+        "glassKLit": 0,
+        "glassGLit": 0,
+        "glassTLit": 0,
+        "glassSLit": 0,
+        "clock": 0,
+        "leadedLit": 0,
+        "acerLit": 0,
+        "glassNavyLit": 0,
+        "floodLamp": 0,
+        "lamp": 0
+      }
+    },
+    {
+      "id": "cloudy",
+      "name": "多云",
+      "desc": "云层低垂 · 柔和漫射光",
+      "en": {
+        "name": "Overcast",
+        "desc": "Low cloud · soft diffuse light"
+      },
+      "icon": "cloudy",
+      "time": 15,
+      "exposure": 0.2,
+      "exposureMin": -2,
+      "exposureMax": 14,
+      "moon": 0,
+      "sky": {
+        "clouds": 0.1,
+        "overcast": 0.9,
+        "brightness": 1,
+        "sun": 5
+      },
+      "haze": {
+        "density": 0.00028,
+        "height": 620,
+        "shafts": 0.4,
+        "ambient": 0.9,
+        "g": 0.5,
+        "cloudShadow": 0
+      },
+      "grade": {
+        "bloom": 0.003,
+        "bloomRadius": 8,
+        "saturation": 0.98,
+        "contrast": 1.05,
+        "vignette": 0.14,
+        "whitePoint": 6400
+      },
+      "emissive": {
+        "shop": 1,
+        "glassBLit": 0.3,
+        "glassDLit": 0.3,
+        "winLit": 0,
+        "winLit2": 0,
+        "glassKLit": 0.3,
+        "glassGLit": 0.3,
+        "glassTLit": 0.3,
+        "glassSLit": 0.3,
+        "clock": 0,
+        "leadedLit": 0,
+        "acerLit": 0,
+        "glassNavyLit": 0,
+        "floodLamp": 0,
+        "lamp": 0
+      }
+    },
+    {
+      "id": "dusk",
+      "name": "黄昏",
+      "desc": "金色时刻 · 华灯初上",
+      "en": {
+        "name": "Dusk",
+        "desc": "Golden hour · the lights come on"
+      },
+      "icon": "dusk",
+      "time": 20.5833,
+      "exposure": 0.3,
+      "exposureMin": -2,
+      "exposureMax": 14,
+      "moon": 0,
+      "sky": {
+        "clouds": 0.46,
+        "brightness": 1,
+        "sun": 5,
+        "nightGlow": 0.00015,
+        "underglow": 0.0002
+      },
+      "haze": {
+        "density": 0.00026,
+        "height": 280,
+        "shafts": 4,
+        "ambient": 0.9,
+        "g": 0.82,
+        "cloudShadow": 0.35
+      },
+      "grade": {
+        "bloom": 0.01,
+        "bloomRadius": 11,
+        "saturation": 1.14,
+        "contrast": 1.08,
+        "vignette": 0.22,
+        "whitePoint": 6700
+      },
+      "emissive": {
+        "shop": 2.6,
+        "glassBLit": 0.7,
+        "glassDLit": 0.7,
+        "winLit": 1.3,
+        "winLit2": 1.3,
+        "glassKLit": 0.7,
+        "glassGLit": 0.7,
+        "glassTLit": 0.7,
+        "glassSLit": 0.7,
+        "clock": 0.45,
+        "leadedLit": 1.3,
+        "acerLit": 1.3,
+        "glassNavyLit": 1.3,
+        "floodLamp": 0,
+        "lamp": 14
+      }
+    },
+    {
+      "id": "night",
+      "name": "夜晚",
+      "desc": "窗灯 · 路灯 · 星空与月光",
+      "en": {
+        "name": "Night",
+        "desc": "Windows · street lights · stars and moonlight"
+      },
+      "icon": "night",
+      "time": 23.5,
+      "exposure": 0.6,
+      "exposureMin": -6,
+      "exposureMax": 3,
+      "moon": 0.06,
+      "sky": {
+        "clouds": 0.4,
+        "brightness": 1,
+        "sun": 5,
+        "nightGlow": 0.0004,
+        "underglow": 0.0005,
+        "stars": 0.4
+      },
+      "haze": {
+        "density": 0.00022,
+        "height": 380,
+        "shafts": 0,
+        "ambient": 1,
+        "g": 0.5,
+        "cloudShadow": 0,
+        "glow": [
+          0.0042,
+          0.0038,
+          0.0036
+        ]
+      },
+      "grade": {
+        "bloom": 0.02,
+        "bloomRadius": 13,
+        "saturation": 1.08,
+        "contrast": 1.06,
+        "vignette": 0.26,
+        "whitePoint": 6500
+      },
+      "emissive": {
+        "shop": 8,
+        "glassBLit": 1.9,
+        "glassDLit": 1.9,
+        "winLit": 3.5,
+        "winLit2": 3.5,
+        "glassKLit": 1.9,
+        "glassGLit": 1.9,
+        "glassTLit": 1.9,
+        "glassSLit": 1.9,
+        "clock": 1.1,
+        "leadedLit": 3.5,
+        "acerLit": 3.5,
+        "glassNavyLit": 3.5,
+        "floodLamp": 60,
+        "lamp": 40
+      }
+    }
+  ],
+  "defaultWeather": "clear",
+  "views": [
+    {
+      "key": "Overview",
+      "id": "overview",
+      "name": "全景鸟瞰",
+      "desc": "曼彻斯特城区 · 真实街道布局",
+      "en": {
+        "name": "Overview",
+        "desc": "Central Manchester · real street layout"
+      },
+      "eye": [
+        420,
+        2550,
+        3650
+      ],
+      "at": [
+        -20,
+        -60,
+        60
+      ],
+      "fov": 0.62
+    },
+    {
+      "key": "River Street & Acer towers",
+      "id": "towers",
+      "name": "River Street 与 Acer",
+      "desc": "River Street Tower · Acer Tower",
+      "en": {
+        "name": "River Street & Acer",
+        "desc": "River Street Tower · Acer Tower"
+      },
+      "eye": [
+        -172.9810069656425,
+        150,
+        726.7366912208734
+      ],
+      "at": [
+        -192.9810069656425,
+        45,
+        396.73669122087335
+      ],
+      "fov": 0.6
+    },
+    {
+      "key": "Town Hall & Albert Square",
+      "id": "townhall",
+      "name": "市政厅",
+      "desc": "Albert Square · 阿尔伯特纪念碑",
+      "en": {
+        "name": "Town Hall",
+        "desc": "Albert Square · Albert Memorial"
+      },
+      "eye": [
+        -232.04982482902062,
+        80,
+        -642.4008070256134
+      ],
+      "at": [
+        -22.049824829020615,
+        35,
+        -482.40080702561335
+      ],
+      "fov": 0.6
+    },
+    {
+      "key": "Deansgate skyline",
+      "id": "deansgate",
+      "name": "Deansgate 天际线",
+      "desc": "Beetham Tower · Deansgate Square · 逆光",
+      "en": {
+        "name": "Deansgate skyline",
+        "desc": "Beetham Tower · Deansgate Square · backlit"
+      },
+      "eye": [
+        -120,
+        82,
+        360
+      ],
+      "at": [
+        -536,
+        84,
+        120
+      ],
+      "fov": 0.74
+    },
+    {
+      "key": "Castlefield viaducts",
+      "id": "castlefield",
+      "name": "Castlefield",
+      "desc": "运河与铁路高架",
+      "en": {
+        "name": "Castlefield",
+        "desc": "Canal and railway viaducts"
+      },
+      "eye": [
+        -1015,
+        48,
+        -235
+      ],
+      "at": [
+        -835,
+        6,
+        -30
+      ],
+      "fov": 0.72
+    },
+    {
+      "key": "University Old Quad",
+      "id": "university",
+      "name": "曼彻斯特大学",
+      "desc": "Old Quad · Whitworth Hall",
+      "en": {
+        "name": "University of Manchester",
+        "desc": "Old Quad · Whitworth Hall"
+      },
+      "eye": [
+        863.3916882634713,
+        70,
+        1161.4749569931382
+      ],
+      "at": [
+        623.7228162388996,
+        18,
+        1052.8039006971974
+      ],
+      "fov": 0.62
+    },
+    {
+      "key": "Street level, Oxford Road",
+      "id": "oxfordroad",
+      "name": "Oxford Road 街景",
+      "desc": "人眼高度 · 曼大方向",
+      "en": {
+        "name": "Oxford Road at street level",
+        "desc": "Eye level · towards the university"
+      },
+      "eye": [
+        604,
+        1.75,
+        803
+      ],
+      "at": [
+        690,
+        10,
+        965
+      ],
+      "fov": 1
+    },
+    {
+      "key": "Etihad Stadium",
+      "id": "etihad",
+      "name": "伊蒂哈德球场",
+      "desc": "桌边卫星模型 · 距离压缩",
+      "en": {
+        "name": "Etihad Stadium",
+        "desc": "Tabletop satellite · distance compressed"
+      },
+      "eye": [
+        1290,
+        170,
+        -690
+      ],
+      "at": [
+        1580,
+        15,
+        -934
+      ],
+      "fov": 0.65
+    }
+  ],
+  "attribution": "Map data © OpenStreetMap contributors (ODbL)",
+  "towersText": {
+    "title": "精选建筑",
+    "pins": "在地图上标出精选建筑",
+    "en": {
+      "title": "Featured towers",
+      "pins": "Show the featured towers on the map"
+    }
+  },
+  "towers": [
+    {
+      "n": 1,
+      "name": "River Street Tower",
+      "brand": "Canvas Manchester",
+      "addr": "River Street",
+      "pos": [
+        -311.17,
+        103.1,
+        419.21
+      ],
+      "view": 1,
+      "side": -1
+    },
+    {
+      "n": 2,
+      "name": "Acer Tower",
+      "brand": "Square Gardens",
+      "addr": "Willmott Street",
+      "pos": [
+        -57.46,
+        90.2,
+        413.39
+      ],
+      "view": 1,
+      "side": 1
+    }
+  ]
+}

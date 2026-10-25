@@ -1,0 +1,7 @@
+* text=auto
+*.ps1 text eol=crlf
+*.patch text eol=lf
+*.png binary
+*.jpg binary
+*.ico binary
+data/osm/manchester-osm.json -diff linguist-generated

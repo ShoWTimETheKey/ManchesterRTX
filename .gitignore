@@ -1,0 +1,14 @@
+# made by setup.ps1: RTXPT with the patches applied, its build, and the launcher
+/renderer/
+/ManchesterRTX.exe
+/launcher/obj/
+
+# local only
+/captures/
+/downloads/
+/logs/
+/dist/
+/exporter/data/personal.json
+/tools/node/
+/tools/git-lfs/
+*.log

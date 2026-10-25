@@ -1,0 +1,440 @@
+{
+  "models": [
+    "Models/Manchester/manchester.glb"
+  ],
+  "graph": [
+    {
+      "name": "Manchester",
+      "model": 0
+    },
+    {
+      "name": "Lights",
+      "children": [
+        {
+          "name": "Sky",
+          "type": "EnvironmentLight",
+          "radianceScale": [
+            1,
+            1,
+            1
+          ],
+          "textureIndex": 0,
+          "rotation": 180,
+          "path": "EnvironmentMaps/kloofendal_43d_clear_puresky_4k_cube_bc6u.dds"
+        }
+      ]
+    },
+    {
+      "name": "Cameras",
+      "children": [
+        {
+          "name": "Overview",
+          "type": "PerspectiveCamera",
+          "translation": [
+            420,
+            2550,
+            3650
+          ],
+          "rotation": [
+            -0.306909,
+            0.057987,
+            0.018738,
+            0.949786
+          ],
+          "verticalFov": 0.62,
+          "zNear": 0.25,
+          "enableAutoExposure": true,
+          "exposureCompensation": 0,
+          "exposureValueMin": -2,
+          "exposureValueMax": 14
+        },
+        {
+          "name": "River Street & Acer towers",
+          "type": "PerspectiveCamera",
+          "translation": [
+            -172.98,
+            150,
+            726.74
+          ],
+          "rotation": [
+            -0.153086,
+            0.029904,
+            0.004635,
+            0.987749
+          ],
+          "verticalFov": 0.6,
+          "zNear": 0.25,
+          "enableAutoExposure": true,
+          "exposureCompensation": 0,
+          "exposureValueMin": -2,
+          "exposureValueMax": 14
+        },
+        {
+          "name": "Town Hall & Albert Square",
+          "type": "PerspectiveCamera",
+          "translation": [
+            -232.05,
+            80,
+            -642.4
+          ],
+          "rotation": [
+            0.03742,
+            0.892924,
+            0.075554,
+            -0.442242
+          ],
+          "verticalFov": 0.6,
+          "zNear": 0.25,
+          "enableAutoExposure": true,
+          "exposureCompensation": 0,
+          "exposureValueMin": -2,
+          "exposureValueMax": 14
+        },
+        {
+          "name": "Deansgate skyline",
+          "type": "PerspectiveCamera",
+          "translation": [
+            -120,
+            82,
+            360
+          ],
+          "rotation": [
+            0.001803,
+            0.500138,
+            -0.001041,
+            0.865943
+          ],
+          "verticalFov": 0.74,
+          "zNear": 0.25,
+          "enableAutoExposure": true,
+          "exposureCompensation": 0,
+          "exposureValueMin": -2,
+          "exposureValueMax": 14
+        },
+        {
+          "name": "Castlefield viaducts",
+          "type": "PerspectiveCamera",
+          "translation": [
+            -1015,
+            48,
+            -235
+          ],
+          "rotation": [
+            0.026899,
+            0.933071,
+            0.071404,
+            -0.351506
+          ],
+          "verticalFov": 0.72,
+          "zNear": 0.25,
+          "enableAutoExposure": true,
+          "exposureCompensation": 0,
+          "exposureValueMin": -2,
+          "exposureValueMax": 14
+        },
+        {
+          "name": "University Old Quad",
+          "type": "PerspectiveCamera",
+          "translation": [
+            863.39,
+            70,
+            1161.47
+          ],
+          "rotation": [
+            -0.081858,
+            0.539202,
+            0.052764,
+            0.836526
+          ],
+          "verticalFov": 0.62,
+          "zNear": 0.25,
+          "enableAutoExposure": true,
+          "exposureCompensation": 0,
+          "exposureValueMin": -2,
+          "exposureValueMax": 14
+        },
+        {
+          "name": "Street level, Oxford Road",
+          "type": "PerspectiveCamera",
+          "translation": [
+            604,
+            1.75,
+            803
+          ],
+          "rotation": [
+            -0.00543,
+            0.97013,
+            -0.021808,
+            -0.241541
+          ],
+          "verticalFov": 1,
+          "zNear": 0.25,
+          "enableAutoExposure": true,
+          "exposureCompensation": 0,
+          "exposureValueMin": -2,
+          "exposureValueMax": 14
+        },
+        {
+          "name": "Etihad Stadium",
+          "type": "PerspectiveCamera",
+          "translation": [
+            1290,
+            170,
+            -690
+          ],
+          "rotation": [
+            -0.174876,
+            -0.414087,
+            -0.081404,
+            0.889564
+          ],
+          "verticalFov": 0.65,
+          "zNear": 0.25,
+          "enableAutoExposure": true,
+          "exposureCompensation": 0,
+          "exposureValueMin": -2,
+          "exposureValueMax": 14
+        }
+      ]
+    },
+    {
+      "name": "SampleSettings",
+      "type": "SampleSettings",
+      "realtimeMode": true,
+      "enableAnimations": true,
+      "startingCamera": 0
+    }
+  ],
+  "animations": [
+    {
+      "name": "Lights-clear",
+      "channels": [
+        {
+          "target": "material:shop",
+          "attribute": "emissiveIntensity",
+          "mode": "step",
+          "data": [
+            {
+              "time": 0,
+              "value": 0
+            },
+            {
+              "time": 1,
+              "value": 0
+            }
+          ]
+        },
+        {
+          "target": "material:glassBLit",
+          "attribute": "emissiveIntensity",
+          "mode": "step",
+          "data": [
+            {
+              "time": 0,
+              "value": 0
+            },
+            {
+              "time": 1,
+              "value": 0
+            }
+          ]
+        },
+        {
+          "target": "material:glassDLit",
+          "attribute": "emissiveIntensity",
+          "mode": "step",
+          "data": [
+            {
+              "time": 0,
+              "value": 0
+            },
+            {
+              "time": 1,
+              "value": 0
+            }
+          ]
+        },
+        {
+          "target": "material:winLit",
+          "attribute": "emissiveIntensity",
+          "mode": "step",
+          "data": [
+            {
+              "time": 0,
+              "value": 0
+            },
+            {
+              "time": 1,
+              "value": 0
+            }
+          ]
+        },
+        {
+          "target": "material:winLit2",
+          "attribute": "emissiveIntensity",
+          "mode": "step",
+          "data": [
+            {
+              "time": 0,
+              "value": 0
+            },
+            {
+              "time": 1,
+              "value": 0
+            }
+          ]
+        },
+        {
+          "target": "material:glassKLit",
+          "attribute": "emissiveIntensity",
+          "mode": "step",
+          "data": [
+            {
+              "time": 0,
+              "value": 0
+            },
+            {
+              "time": 1,
+              "value": 0
+            }
+          ]
+        },
+        {
+          "target": "material:glassGLit",
+          "attribute": "emissiveIntensity",
+          "mode": "step",
+          "data": [
+            {
+              "time": 0,
+              "value": 0
+            },
+            {
+              "time": 1,
+              "value": 0
+            }
+          ]
+        },
+        {
+          "target": "material:glassTLit",
+          "attribute": "emissiveIntensity",
+          "mode": "step",
+          "data": [
+            {
+              "time": 0,
+              "value": 0
+            },
+            {
+              "time": 1,
+              "value": 0
+            }
+          ]
+        },
+        {
+          "target": "material:glassSLit",
+          "attribute": "emissiveIntensity",
+          "mode": "step",
+          "data": [
+            {
+              "time": 0,
+              "value": 0
+            },
+            {
+              "time": 1,
+              "value": 0
+            }
+          ]
+        },
+        {
+          "target": "material:clock",
+          "attribute": "emissiveIntensity",
+          "mode": "step",
+          "data": [
+            {
+              "time": 0,
+              "value": 0
+            },
+            {
+              "time": 1,
+              "value": 0
+            }
+          ]
+        },
+        {
+          "target": "material:leadedLit",
+          "attribute": "emissiveIntensity",
+          "mode": "step",
+          "data": [
+            {
+              "time": 0,
+              "value": 0
+            },
+            {
+              "time": 1,
+              "value": 0
+            }
+          ]
+        },
+        {
+          "target": "material:acerLit",
+          "attribute": "emissiveIntensity",
+          "mode": "step",
+          "data": [
+            {
+              "time": 0,
+              "value": 0
+            },
+            {
+              "time": 1,
+              "value": 0
+            }
+          ]
+        },
+        {
+          "target": "material:glassNavyLit",
+          "attribute": "emissiveIntensity",
+          "mode": "step",
+          "data": [
+            {
+              "time": 0,
+              "value": 0
+            },
+            {
+              "time": 1,
+              "value": 0
+            }
+          ]
+        },
+        {
+          "target": "material:floodLamp",
+          "attribute": "emissiveIntensity",
+          "mode": "step",
+          "data": [
+            {
+              "time": 0,
+              "value": 0
+            },
+            {
+              "time": 1,
+              "value": 0
+            }
+          ]
+        },
+        {
+          "target": "material:lamp",
+          "attribute": "emissiveIntensity",
+          "mode": "step",
+          "data": [
+            {
+              "time": 0,
+              "value": 0
+            },
+            {
+              "time": 1,
+              "value": 0
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,232 @@
+diff --git a/include/donut/app/DeviceManager.h b/include/donut/app/DeviceManager.h
+index 28c157e..d68ad75 100644
+--- a/include/donut/app/DeviceManager.h
++++ b/include/donut/app/DeviceManager.h
+@@ -145,6 +145,7 @@ namespace donut::app
+         bool startMaximized = false; // ignores backbuffer width/height to be monitor size
+         bool startFullscreen = false;
+         bool startBorderless = false;
++        bool startHidden = false;       // ManchesterRTX: the app shows the window itself once its first frames are on screen
+         bool allowModeSwitch = false;
+         int windowPosX = -1;            // -1 means use default placement
+         int windowPosY = -1;
+@@ -153,6 +154,7 @@ namespace donut::app
+         uint32_t refreshRate = 0;
+         uint32_t swapChainBufferCount = 3;
+         nvrhi::Format swapChainFormat = nvrhi::Format::SRGBA8_UNORM;
++        bool hdr10ColorSpace = false;   // ManchesterRTX: with an R10G10B10A2 swap chain, present in HDR10 (ST 2084, BT.2020)
+         uint32_t swapChainSampleCount = 1;
+         uint32_t swapChainSampleQuality = 0;
+ 
+diff --git a/include/donut/app/StreamlineInterface.h b/include/donut/app/StreamlineInterface.h
+index d4ee084..6c40f81 100644
+--- a/include/donut/app/StreamlineInterface.h
++++ b/include/donut/app/StreamlineInterface.h
+@@ -274,6 +274,7 @@ public:
+         uint32_t uiBufferFormat{};
+         bool useReflexMatrices = false;
+         DLSSGQueueParallelismMode queueParallelismMode{};
++        bool enableUserInterfaceRecomposition = false;  // ManchesterRTX: needs Streamline 2.14+ and tagged Hudless + UI colour/alpha (DLSS-G "preset B")
+     };
+     enum class DLSSGStatus : uint32_t
+     {
+@@ -355,6 +356,14 @@ public:
+         nvrhi::ITexture* depth,
+         nvrhi::ITexture* finalColorHudless) = 0;
+ 
++    // ManchesterRTX: Hudless colour and premultiplied UI colour/alpha, both at back buffer size, for DLSS-G UI recomposition.
++    // Tag after both are complete; keep them unchanged (and in their current state) until present.
++    virtual void TagResourcesHudlessAndUI(
++        nvrhi::ICommandList* commandList,
++        const donut::engine::IView* view,
++        nvrhi::ITexture* hudless,
++        nvrhi::ITexture* uiColorAndAlpha) = 0;
++
+     virtual void TagResourcesDLSSNIS(
+         nvrhi::ICommandList* commandList,
+         const donut::engine::IView* view,
+diff --git a/include/donut/app/imgui_renderer.h b/include/donut/app/imgui_renderer.h
+index 7d438f6..3e5d685 100644
+--- a/include/donut/app/imgui_renderer.h
++++ b/include/donut/app/imgui_renderer.h
+@@ -76,6 +76,7 @@ namespace donut::app
+         bool const m_isCompressed;
+         float const m_sizeAtDefaultScale;
+         ImFont* m_imFont = nullptr;
++        const ImWchar* m_glyphRanges = nullptr;     // ManchesterRTX: optional glyph ranges (e.g. CJK); must outlive the font
+ 
+         void CreateScaledFont(float displayScale);
+         void ReleaseScaledFont();
+@@ -108,6 +109,9 @@ namespace donut::app
+         // to test if the font is valid.
+         bool HasFontData() const { return m_data != nullptr; }
+ 
++        // ManchesterRTX: glyph ranges to rasterise (the legacy atlas path only builds the ranges it is given)
++        void SetGlyphRanges(const ImWchar* ranges) { m_glyphRanges = ranges; }
++
+         // Returns the ImFont object that can be used with ImGUI.
+         // Note that the returned pointer is transient and will change when screen DPI changes,
+         // or when new fonts are loaded. Do not cache the returned value between frames.
+diff --git a/src/app/DeviceManager.cpp b/src/app/DeviceManager.cpp
+index 48f8a3c..a6aa236 100644
+--- a/src/app/DeviceManager.cpp
++++ b/src/app/DeviceManager.cpp
+@@ -360,6 +360,14 @@ bool DeviceManager::CreateWindowDeviceAndSwapChain(const DeviceCreationParameter
+     
+     glfwSetWindowPosCallback(m_Window, WindowPosCallback_GLFW);
+     glfwSetWindowCloseCallback(m_Window, WindowCloseCallback_GLFW);
++
++    // ManchesterRTX: the DPI scale is otherwise only queried when the window moves, so a window that opens in place
++    // (e.g. borderless at the monitor origin) would keep a scale of 1.0
++    {
++        int wx = 0, wy = 0;
++        glfwGetWindowPos(m_Window, &wx, &wy);
++        WindowPosCallback(wx, wy);
++    }
+     glfwSetWindowRefreshCallback(m_Window, WindowRefreshCallback_GLFW);
+     glfwSetWindowFocusCallback(m_Window, WindowFocusCallback_GLFW);
+     glfwSetWindowIconifyCallback(m_Window, WindowIconifyCallback_GLFW);
+@@ -380,7 +388,8 @@ bool DeviceManager::CreateWindowDeviceAndSwapChain(const DeviceCreationParameter
+     if (!CreateSwapChain())
+         return false;
+ 
+-    glfwShowWindow(m_Window);
++    if (!params.startHidden)    // ManchesterRTX: otherwise an empty window would show until the first frame is presented
++        glfwShowWindow(m_Window);
+     
+     if (m_DeviceParams.startMaximized)
+     {
+diff --git a/src/app/dx12/DeviceManager_DX12.cpp b/src/app/dx12/DeviceManager_DX12.cpp
+index 758e4d3..15bf266 100644
+--- a/src/app/dx12/DeviceManager_DX12.cpp
++++ b/src/app/dx12/DeviceManager_DX12.cpp
+@@ -416,6 +416,15 @@ bool DeviceManager_DX12::CreateSwapChain()
+ 	hr = pSwapChain1->QueryInterface(IID_PPV_ARGS(&m_SwapChain));
+ 	HR_RETURN(hr)
+ 
++    // ManchesterRTX: HDR10 output (10-bit UNORM back buffer holding PQ-encoded BT.2020)
++    if (m_DeviceParams.hdr10ColorSpace && m_SwapChainDesc.Format == DXGI_FORMAT_R10G10B10A2_UNORM)
++    {
++        UINT support = 0;
++        if (SUCCEEDED(m_SwapChain->CheckColorSpaceSupport(DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020, &support))
++            && (support & DXGI_SWAP_CHAIN_COLOR_SPACE_SUPPORT_FLAG_PRESENT))
++            m_SwapChain->SetColorSpace1(DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020);
++    }
++
+     if (!CreateRenderTargets())
+         return false;
+ 
+@@ -531,6 +540,9 @@ void DeviceManager_DX12::ResizeSwapChain()
+         donut::log::fatal("ResizeBuffers failed");
+     }
+ 
++    if (m_DeviceParams.hdr10ColorSpace && m_SwapChainDesc.Format == DXGI_FORMAT_R10G10B10A2_UNORM)    // ManchesterRTX
++        m_SwapChain->SetColorSpace1(DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020);
++
+     bool ret = CreateRenderTargets();
+     if (!ret)
+     {
+diff --git a/src/app/imgui_nvrhi.cpp b/src/app/imgui_nvrhi.cpp
+index 6d3b55a..f3cca2d 100644
+--- a/src/app/imgui_nvrhi.cpp
++++ b/src/app/imgui_nvrhi.cpp
+@@ -150,8 +150,8 @@ bool ImGui_NVRHI::init(nvrhi::IDevice* device, std::shared_ptr<ShaderFactory> sh
+         blendState.targets[0].setBlendEnable(true)
+             .setSrcBlend(nvrhi::BlendFactor::SrcAlpha)
+             .setDestBlend(nvrhi::BlendFactor::InvSrcAlpha)
+-            .setSrcBlendAlpha(nvrhi::BlendFactor::InvSrcAlpha)
+-            .setDestBlendAlpha(nvrhi::BlendFactor::Zero);
++            .setSrcBlendAlpha(nvrhi::BlendFactor::One)              // ManchesterRTX: accumulate coverage so a UI layer
++            .setDestBlendAlpha(nvrhi::BlendFactor::InvSrcAlpha);    // ends up premultiplied (DLSS-G UI colour + alpha)
+ 
+         auto rasterState = nvrhi::RasterState()
+             .setFillSolid()
+diff --git a/src/app/imgui_renderer.cpp b/src/app/imgui_renderer.cpp
+index edfe316..5242ecc 100644
+--- a/src/app/imgui_renderer.cpp
++++ b/src/app/imgui_renderer.cpp
+@@ -436,6 +436,7 @@ void RegisteredFont::CreateScaledFont(float displayScale)
+ {
+     ImFontConfig fontConfig;
+     fontConfig.SizePixels = m_sizeAtDefaultScale * displayScale;
++    fontConfig.GlyphRanges = m_glyphRanges;
+ 
+     m_imFont = nullptr;
+ 
+diff --git a/src/app/streamline/StreamlineIntegration.cpp b/src/app/streamline/StreamlineIntegration.cpp
+index 683b019..d261e3c 100644
+--- a/src/app/streamline/StreamlineIntegration.cpp
++++ b/src/app/streamline/StreamlineIntegration.cpp
+@@ -991,6 +991,9 @@ void StreamlineIntegration::SetDLSSGOptions(const DLSSGOptions& options)
+ #if (SL_VERSION_MAJOR >= 2 && (SL_VERSION_MAJOR > 2 || SL_VERSION_MINOR >= 7))
+     slOptions.queueParallelismMode = (sl::DLSSGQueueParallelismMode)options.queueParallelismMode;
+ #endif
++#if (SL_VERSION_MAJOR >= 2 && (SL_VERSION_MAJOR > 2 || SL_VERSION_MINOR >= 14))
++    slOptions.enableUserInterfaceRecomposition = make_sl_bool(options.enableUserInterfaceRecomposition);   // ManchesterRTX
++#endif
+ 
+     successCheck(slDLSSGSetOptions(m_viewport, slOptions), "slDLSSGSetOptions");
+ }
+@@ -1023,6 +1026,14 @@ void StreamlineIntegration::GetDLSSGState(DLSSGState& state, const DLSSGOptions&
+ 
+     sl::DLSSGState slState;
+     successCheck(slDLSSGGetState(m_viewport, slState, &slOptions), "slDLSSGGetState");
++    {   // ManchesterRTX: report DLSS-G status changes
++        static uint32_t lastStatus = ~0u;
++        if ((uint32_t)slState.status != lastStatus)
++        {
++            lastStatus = (uint32_t)slState.status;
++            log::info("DLSS-G state: status 0x%x, presented %u, max generated %u, min size %u", lastStatus, slState.numFramesActuallyPresented, slState.numFramesToGenerateMax, slState.minWidthOrHeight);
++        }
++    }
+ 
+     state.estimatedVRAMUsageInBytes = slState.estimatedVRAMUsageInBytes;
+     switch (slState.status)
+@@ -1341,6 +1352,30 @@ void StreamlineIntegration::TagResourcesGeneral(
+     successCheck(slSetTag(m_viewport, inputs, _countof(inputs), cmdbuffer), "slSetTag_General");
+ }
+ 
++void StreamlineIntegration::TagResourcesHudlessAndUI(
++    nvrhi::ICommandList* commandList,
++    const donut::engine::IView* view,
++    nvrhi::ITexture* hudless,
++    nvrhi::ITexture* uiColorAndAlpha)
++{
++    if (!m_slInitialized)
++    {
++        log::warning("Streamline not initialised.");
++        return;
++    }
++
++    sl::Extent fullExtent{ 0, 0, hudless->getDesc().width, hudless->getDesc().height };
++    void* cmdbuffer = GetNativeCommandList(commandList);
++    sl::Resource hudlessResource{}, uiResource{};
++    GetSLResource(commandList, hudlessResource, hudless, view);
++    GetSLResource(commandList, uiResource, uiColorAndAlpha, view);
++
++    sl::ResourceTag hudlessTag = sl::ResourceTag{ &hudlessResource, sl::kBufferTypeHUDLessColor, sl::ResourceLifecycle::eValidUntilPresent, &fullExtent };
++    sl::ResourceTag uiTag = sl::ResourceTag{ &uiResource, sl::kBufferTypeUIColorAndAlpha, sl::ResourceLifecycle::eValidUntilPresent, &fullExtent };
++    sl::ResourceTag inputs[] = { hudlessTag, uiTag };
++    successCheck(slSetTag(m_viewport, inputs, _countof(inputs), cmdbuffer), "slSetTag_HudlessAndUI");
++}
++
+ void StreamlineIntegration::TagResourcesDLSSNIS(
+     nvrhi::ICommandList* commandList,
+     const donut::engine::IView* view,
+diff --git a/src/app/streamline/StreamlineIntegration.h b/src/app/streamline/StreamlineIntegration.h
+index cb65a3c..989f1d5 100644
+--- a/src/app/streamline/StreamlineIntegration.h
++++ b/src/app/streamline/StreamlineIntegration.h
+@@ -81,6 +81,12 @@ public:
+         nvrhi::ITexture* depth,
+         nvrhi::ITexture* finalColorHudless) override;
+ 
++    virtual void TagResourcesHudlessAndUI(
++        nvrhi::ICommandList* commandList,
++        const donut::engine::IView* view,
++        nvrhi::ITexture* hudless,
++        nvrhi::ITexture* uiColorAndAlpha) override;
++
+     virtual void TagResourcesDLSSNIS(
+         nvrhi::ICommandList* commandList,
+         const donut::engine::IView* view,

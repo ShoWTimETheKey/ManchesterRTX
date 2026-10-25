@@ -1,0 +1,29 @@
+#include <windows.h>
+
+1   ICON        "ManchesterRTX.ico"
+101 RCDATA      "splash.png"
+102 RCDATA      "splash-en.png"
+1   RT_MANIFEST "ManchesterRTX.manifest"
+
+VS_VERSION_INFO VERSIONINFO
+FILEVERSION     1,0,0,0
+PRODUCTVERSION  1,0,0,0
+FILEOS          VOS_NT_WINDOWS32
+FILETYPE        VFT_APP
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904B0"
+        BEGIN
+            VALUE "FileDescription",  "Manchester RTX"
+            VALUE "ProductName",      "Manchester RTX"
+            VALUE "FileVersion",      "1.0.0"
+            VALUE "ProductVersion",   "1.0.0"
+            VALUE "OriginalFilename", "ManchesterRTX.exe"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1200
+    END
+END

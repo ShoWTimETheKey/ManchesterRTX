@@ -1,0 +1,23 @@
+// Quick survey of the OSM extract: element counts, building height coverage, and the landmarks the model cares about.
+import fs from 'fs';
+const osm = JSON.parse(fs.readFileSync(new URL('../../downloads/osm/manchester-osm.json', import.meta.url)));
+const els = osm.elements;
+const count = (f) => els.filter(f).length;
+console.log('elements', els.length, 'nodes', count(e => e.type === 'node'), 'ways', count(e => e.type === 'way'), 'relations', count(e => e.type === 'relation'));
+const bld = els.filter(e => e.tags && e.tags.building);
+const parts = els.filter(e => e.tags && e.tags['building:part']);
+const withH = bld.filter(e => e.tags.height || e.tags['building:levels']);
+console.log('buildings', bld.length, 'with height/levels', withH.length, 'building:parts', parts.length);
+const tally = (key, list) => { const t = {}; for (const e of list) { const v = e.tags[key]; if (v) t[v] = (t[v] || 0) + 1; } return Object.entries(t).sort((a, b) => b[1] - a[1]).slice(0, 25); };
+console.log('building types', JSON.stringify(tally('building', bld)));
+console.log('materials', JSON.stringify(tally('building:material', bld)));
+console.log('roof shapes', JSON.stringify(tally('roof:shape', [...bld, ...parts])));
+console.log('highway', JSON.stringify(tally('highway', els.filter(e => e.tags && e.tags.highway))));
+console.log('railway', JSON.stringify(tally('railway', els.filter(e => e.tags && e.tags.railway))));
+console.log('waterway', JSON.stringify(tally('waterway', els.filter(e => e.tags && e.tags.waterway))));
+console.log('landuse', JSON.stringify(tally('landuse', els.filter(e => e.tags && e.tags.landuse))));
+console.log('leisure', JSON.stringify(tally('leisure', els.filter(e => e.tags && e.tags.leisure))));
+console.log('trees', count(e => e.tags && e.tags.natural === 'tree'));
+const want = /town hall|beetham|deansgate square|river street|acer|square gardens|owens|whitworth|beyer|manchester museum|christie|rylands|cathedral|central library|midland|refuge|kimpton|palace|bridgewater hall|manchester central|g-mex|piccadilly|victoria|arena|urbis|football museum|arndale|royal exchange|corn exchange|printworks|trinity|cis tower|co-operative|alan turing|university place|stopford|kilburn|schuster|engineering|sackville|renold|oxford road station|science and industry|etihad|old trafford|chinatown|albert|st peter|exchange|hilton|axis|elizabeth|one angel|lighthouse|cooperative/i;
+const named = els.filter(e => e.tags && e.tags.name && want.test(e.tags.name) && (e.tags.building || e.tags['building:part'] || e.tags.leisure === 'stadium' || e.tags.railway === 'station' || e.tags.amenity));
+for (const e of named.slice(0, 160)) console.log(`${e.type}/${e.id}`, JSON.stringify(e.tags.name), e.tags.building || e.tags['building:part'] || e.tags.leisure || e.tags.railway || e.tags.amenity, 'h=' + (e.tags.height || ''), 'lv=' + (e.tags['building:levels'] || ''), 'mat=' + (e.tags['building:material'] || ''), 'roof=' + (e.tags['roof:shape'] || ''));
